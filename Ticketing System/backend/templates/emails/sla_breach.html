@@ -1,0 +1,18 @@
+{% extends "emails/base.html" %}
+{% block content %}
+<h2 style="color:#b91c1c;margin-top:0">⚠️ SLA Breach Alert</h2>
+<p>The following ticket has breached its SLA resolution deadline and requires immediate attention.</p>
+<div class="ticket-box">
+  <p><strong>Ticket:</strong> {{ ticket.ticket_number }}</p>
+  <p><strong>Title:</strong> {{ ticket.title }}</p>
+  <p><strong>Priority:</strong> <span class="badge badge-{{ ticket.priority }}">{{ ticket.get_priority_display }}</span></p>
+  <p><strong>Status:</strong> {{ ticket.get_status_display }}</p>
+  {% if ticket.department %}<p><strong>Department:</strong> {{ ticket.department.name }}</p>{% endif %}
+  {% if ticket.assigned_to %}<p><strong>Assigned To:</strong> {{ ticket.assigned_to.full_name }}</p>{% endif %}
+  <p><strong>Created:</strong> {{ ticket.created_at|date:"d M Y H:i" }}</p>
+  {% if ticket.sla_resolution_due %}<p><strong>SLA Due:</strong> {{ ticket.sla_resolution_due|date:"d M Y H:i" }}</p>{% endif %}
+</div>
+<p>Please take immediate action to resolve or escalate this ticket.</p>
+<a href="{{ frontend_url }}/tickets/{{ ticket.id }}" class="btn" style="background:#b91c1c;">View Ticket</a>
+{% if settings.email_footer %}<p style="font-size:12px;color:#888;margin-top:24px;">{{ settings.email_footer }}</p>{% endif %}
+{% endblock %}

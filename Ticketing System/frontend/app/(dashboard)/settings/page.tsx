@@ -10,7 +10,7 @@ import { Input } from '@/app/components/ui/input'
 import { Textarea } from '@/app/components/ui/textarea'
 import {
   Settings, Building2, Ticket, Mail, Layout, Tag,
-  CheckCircle2, Circle, Upload, X, Eye, Plus, Pencil, Trash2, GripVertical,
+  CheckCircle2, Circle, Upload, X, Eye, EyeOff, Plus, Pencil, Trash2, GripVertical,
 } from 'lucide-react'
 
 // ─── tiny local Toggle ───────────────────────────────────────────────────────
@@ -95,6 +95,10 @@ export default function SettingsPage() {
   const [faviconPreview, setFaviconPreview] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState<string | null>(null)
+  const [showEmailPwd, setShowEmailPwd] = useState(false)
+  const [testEmailRecipient, setTestEmailRecipient] = useState('')
+  const [testEmailLoading, setTestEmailLoading] = useState(false)
+  const [testEmailResult, setTestEmailResult] = useState<{ success: boolean; message?: string; error?: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const logoRef = useRef<HTMLInputElement>(null)
   const faviconRef = useRef<HTMLInputElement>(null)
@@ -151,6 +155,20 @@ export default function SettingsPage() {
     setFaviconFile(file)
     setFaviconPreview(URL.createObjectURL(file))
     setSaved(null)
+  }
+
+  const handleTestEmail = async () => {
+    setTestEmailLoading(true)
+    setTestEmailResult(null)
+    try {
+      const res = await api.post('/branding/test-email/', { recipient: testEmailRecipient || undefined })
+      setTestEmailResult({ success: true, message: res.data.message })
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { error?: string } } }
+      setTestEmailResult({ success: false, error: err.response?.data?.error || 'Failed to send test email.' })
+    } finally {
+      setTestEmailLoading(false)
+    }
   }
 
   const openCatModal = (cat?: TicketCategory) => {
@@ -523,40 +541,205 @@ export default function SettingsPage() {
 
       {/* ── Email ── */}
       {activeTab === 'email' && (
-        <Card>
-          <CardHeader><CardTitle>Email Configuration</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-4">
+          {/* SMTP Server */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>SMTP Server</CardTitle>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-500">{settings.email_enabled ? 'Email enabled' : 'Email disabled'}</span>
+                  <Toggle value={!!settings.email_enabled} onChange={(v) => set({ email_enabled: v })} />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Input
+                  label="SMTP Host"
+                  placeholder="smtp.office365.com"
+                  value={settings.email_host || ''}
+                  onChange={(e) => set({ email_host: e.target.value })}
+                />
+                <Input
+                  label="SMTP Port"
+                  type="number"
+                  placeholder="587"
+                  value={String(settings.email_port || 587)}
+                  onChange={(e) => set({ email_port: Number(e.target.value) })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <Input
+                  label="Username / Login Email"
+                  type="email"
+                  placeholder="helpdesk@yourdomain.com"
+                  value={settings.email_host_user || ''}
+                  onChange={(e) => set({ email_host_user: e.target.value })}
+                />
+                <div className="relative">
+                  <Input
+                    label="Password / App Password"
+                    type={showEmailPwd ? 'text' : 'password'}
+                    placeholder={settings.email_host_password ? '••••••••' : 'Enter password'}
+                    value={settings.email_host_password || ''}
+                    onChange={(e) => set({ email_host_password: e.target.value })}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEmailPwd((p) => !p)}
+                    className="absolute right-3 bottom-2.5 text-gray-400 hover:text-gray-600"
+                  >
+                    {showEmailPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex gap-6">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="email_security"
+                    checked={!!settings.email_use_tls && !settings.email_use_ssl}
+                    onChange={() => set({ email_use_tls: true, email_use_ssl: false })}
+                    className="text-blue-900"
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">STARTTLS</p>
+                    <p className="text-xs text-gray-500">Port 587 — most common (Office 365, Gmail)</p>
+                  </div>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="email_security"
+                    checked={!!settings.email_use_ssl && !settings.email_use_tls}
+                    onChange={() => set({ email_use_tls: false, email_use_ssl: true })}
+                    className="text-blue-900"
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">SSL/TLS</p>
+                    <p className="text-xs text-gray-500">Port 465 — older servers</p>
+                  </div>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="email_security"
+                    checked={!settings.email_use_tls && !settings.email_use_ssl}
+                    onChange={() => set({ email_use_tls: false, email_use_ssl: false })}
+                    className="text-blue-900"
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">None</p>
+                    <p className="text-xs text-gray-500">Port 25 — internal/dev only</p>
+                  </div>
+                </label>
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Test email recipient</p>
+                  <p className="text-xs text-gray-400">Leave blank to send to your account email</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder={user?.email || 'you@example.com'}
+                    value={testEmailRecipient}
+                    onChange={(e) => setTestEmailRecipient(e.target.value)}
+                  />
+                  <button
+                    onClick={handleTestEmail}
+                    disabled={testEmailLoading}
+                    className="px-4 py-1.5 bg-blue-900 text-white text-sm font-medium rounded-lg hover:bg-blue-800 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
+                  >
+                    {testEmailLoading ? <span className="animate-spin w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full" /> : <Mail className="w-3.5 h-3.5" />}
+                    Send Test
+                  </button>
+                </div>
+              </div>
+              {testEmailResult && (
+                <div className={`text-sm rounded-lg px-4 py-3 ${testEmailResult.success ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                  {testEmailResult.success ? '✓ ' : '✗ '}{testEmailResult.message || testEmailResult.error}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Sender identity */}
+          <Card>
+            <CardHeader><CardTitle>Sender Identity</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Input
+                  label="Sender Name"
+                  placeholder="Helpdesk"
+                  value={settings.email_sender_name || ''}
+                  onChange={(e) => set({ email_sender_name: e.target.value })}
+                />
+                <Input
+                  label="From Email Address"
+                  type="email"
+                  placeholder="helpdesk@yourdomain.com"
+                  value={settings.email_sender_address || ''}
+                  onChange={(e) => set({ email_sender_address: e.target.value })}
+                />
+              </div>
               <Input
-                label="Sender Name"
-                placeholder="Helpdesk"
-                value={settings.email_sender_name || ''}
-                onChange={(e) => set({ email_sender_name: e.target.value })}
-              />
-              <Input
-                label="Sender Email Address"
+                label="Reply-To Address"
                 type="email"
-                placeholder="helpdesk@example.com"
-                value={settings.email_sender_address || ''}
-                onChange={(e) => set({ email_sender_address: e.target.value })}
+                placeholder="support@yourdomain.com (optional)"
+                value={settings.email_reply_to || ''}
+                onChange={(e) => set({ email_reply_to: e.target.value })}
               />
-            </div>
-            <Input
-              label="Reply-To Address"
-              type="email"
-              placeholder="support@example.com (optional)"
-              value={settings.email_reply_to || ''}
-              onChange={(e) => set({ email_reply_to: e.target.value })}
-            />
-            <Textarea
-              label="Email Footer"
-              placeholder="This is an automated message from our helpdesk system."
-              rows={3}
-              value={settings.email_footer || ''}
-              onChange={(e) => set({ email_footer: e.target.value })}
-            />
-          </CardContent>
-        </Card>
+              <Textarea
+                label="Email Footer"
+                placeholder="This is an automated message from our helpdesk system."
+                rows={2}
+                value={settings.email_footer || ''}
+                onChange={(e) => set({ email_footer: e.target.value })}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Notification events */}
+          <Card>
+            <CardHeader><CardTitle>Email Notification Events</CardTitle></CardHeader>
+            <CardContent className="divide-y divide-gray-100">
+              {[
+                { key: 'notify_on_ticket_created', label: 'Ticket Created', desc: 'Notify requester when their ticket is received; notify department email' },
+                { key: 'notify_on_ticket_assigned', label: 'Ticket Assigned', desc: 'Notify the assigned agent when a ticket is assigned to them' },
+                { key: 'notify_on_status_updated', label: 'Status Changed', desc: 'Notify requester whenever the ticket status changes' },
+                { key: 'notify_on_comment_added', label: 'Comment / Reply Added', desc: 'Notify requester when an agent adds a public reply' },
+                { key: 'notify_on_ticket_resolved', label: 'Ticket Resolved', desc: 'Notify requester when their ticket is marked resolved' },
+                { key: 'notify_on_sla_breach', label: 'SLA Breach', desc: 'Alert assigned agent and department when an SLA deadline is missed' },
+              ].map((ev) => (
+                <div key={ev.key} className="flex items-center justify-between py-4">
+                  <div className="flex-1 pr-6">
+                    <p className="font-medium text-gray-900">{ev.label}</p>
+                    <p className="text-sm text-gray-500">{ev.desc}</p>
+                  </div>
+                  <Toggle
+                    value={!!(settings as Record<string, unknown>)[ev.key]}
+                    onChange={(v) => set({ [ev.key]: v } as Partial<SystemSettings>)}
+                  />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-4">
+              <p className="text-xs text-gray-400">
+                Common SMTP presets — Office 365: <code>smtp.office365.com:587 STARTTLS</code> &nbsp;|&nbsp;
+                Gmail: <code>smtp.gmail.com:587 STARTTLS</code> (use App Password) &nbsp;|&nbsp;
+                Outlook.com: <code>smtp-mail.outlook.com:587 STARTTLS</code>
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* ── Form Fields ── */}

@@ -79,11 +79,27 @@ export interface SystemSettings {
   ticket_seq_digits: number
   ticket_reset_yearly: boolean
   ticket_number_preview: string
-  // Email
+  // Email SMTP
+  email_enabled: boolean
+  email_host: string
+  email_port: number
+  email_use_tls: boolean
+  email_use_ssl: boolean
+  email_host_user: string
+  email_host_password: string
+  email_timeout: number
+  // Email Identity
   email_sender_name: string
   email_sender_address: string
   email_reply_to: string
   email_footer: string
+  // Notification toggles
+  notify_on_ticket_created: boolean
+  notify_on_ticket_assigned: boolean
+  notify_on_status_updated: boolean
+  notify_on_comment_added: boolean
+  notify_on_ticket_resolved: boolean
+  notify_on_sla_breach: boolean
 }
 
 export interface SLAPolicy {

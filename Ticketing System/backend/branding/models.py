@@ -50,11 +50,29 @@ class SystemSettings(models.Model):
     _ticket_counter = models.PositiveIntegerField(default=0)
     _ticket_counter_year = models.PositiveIntegerField(default=0)
 
-    # ---------- Email ----------
+    # ---------- Email SMTP ----------
+    email_enabled = models.BooleanField(default=False)
+    email_host = models.CharField(max_length=200, blank=True, default='smtp.office365.com')
+    email_port = models.PositiveIntegerField(default=587)
+    email_use_tls = models.BooleanField(default=True)
+    email_use_ssl = models.BooleanField(default=False)
+    email_host_user = models.CharField(max_length=200, blank=True)
+    email_host_password = models.CharField(max_length=500, blank=True)
+    email_timeout = models.PositiveIntegerField(default=30)
+
+    # ---------- Email Identity ----------
     email_sender_name = models.CharField(max_length=200, default='Helpdesk')
     email_sender_address = models.EmailField(blank=True)
     email_reply_to = models.EmailField(blank=True)
     email_footer = models.TextField(blank=True)
+
+    # ---------- Notification Events ----------
+    notify_on_ticket_created = models.BooleanField(default=True)
+    notify_on_ticket_assigned = models.BooleanField(default=True)
+    notify_on_status_updated = models.BooleanField(default=True)
+    notify_on_comment_added = models.BooleanField(default=True)
+    notify_on_ticket_resolved = models.BooleanField(default=True)
+    notify_on_sla_breach = models.BooleanField(default=True)
 
     class Meta:
         verbose_name = 'System Settings'

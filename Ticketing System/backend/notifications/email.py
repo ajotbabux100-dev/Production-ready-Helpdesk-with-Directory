@@ -1,30 +1,79 @@
-from django.core.mail import send_mail
-from django.conf import settings
+from django.core.mail import EmailMultiAlternatives, get_connection
 from django.template.loader import render_to_string
 
 
+def _get_smtp_connection():
+    """Returns an SMTP connection built from SystemSettings, or None if email is disabled."""
+    from branding.models import SystemSettings
+    s = SystemSettings.get()
+    if not s.email_enabled or not s.email_host or not s.email_host_user or not s.email_host_password:
+        return None, s
+    conn = get_connection(
+        backend='django.core.mail.backends.smtp.EmailBackend',
+        host=s.email_host,
+        port=s.email_port,
+        username=s.email_host_user,
+        password=s.email_host_password,
+        use_tls=s.email_use_tls,
+        use_ssl=s.email_use_ssl,
+        timeout=s.email_timeout or 30,
+        fail_silently=False,
+    )
+    return conn, s
+
+
 def send_ticket_email(subject, recipient_email, template_name, context):
+    conn, s = _get_smtp_connection()
+    if conn is None:
+        print('Email not sent: SMTP is disabled or not fully configured.')
+        return False
+
+    from_email = f'{s.email_sender_name} <{s.email_sender_address or s.email_host_user}>'
+    reply_to = [s.email_reply_to] if s.email_reply_to else []
+
+    context.setdefault('settings', s)
+    context.setdefault('frontend_url', _frontend_url())
+
     try:
         html_message = render_to_string(f'emails/{template_name}.html', context)
-        send_mail(
+    except Exception:
+        html_message = None
+
+    plain = context.get('_plain_text', '')
+
+    try:
+        msg = EmailMultiAlternatives(
             subject=subject,
-            message='',
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[recipient_email],
-            html_message=html_message,
-            fail_silently=False,
+            body=plain,
+            from_email=from_email,
+            to=[recipient_email],
+            reply_to=reply_to,
+            connection=conn,
         )
+        if html_message:
+            msg.attach_alternative(html_message, 'text/html')
+        msg.send()
         return True
     except Exception as e:
         print(f'Email error: {e}')
         return False
 
 
+def _frontend_url():
+    from django.conf import settings as dj_settings
+    return getattr(dj_settings, 'FRONTEND_URL', 'http://localhost:3000')
+
+
+def _notify_enabled(flag_name):
+    from branding.models import SystemSettings
+    s = SystemSettings.get()
+    return getattr(s, flag_name, True)
+
+
 def notify_ticket_created(ticket):
-    ctx = {
-        'ticket': ticket,
-        'frontend_url': settings.FRONTEND_URL,
-    }
+    if not _notify_enabled('notify_on_ticket_created'):
+        return
+    ctx = {'ticket': ticket, '_plain_text': f'Your ticket {ticket.ticket_number} has been received.'}
     send_ticket_email(
         f'[{ticket.ticket_number}] Your ticket has been received',
         ticket.requester.email,
@@ -36,16 +85,15 @@ def notify_ticket_created(ticket):
             f'[{ticket.ticket_number}] New ticket assigned to your department',
             ticket.department.email,
             'ticket_dept_notification',
-            ctx,
+            {**ctx},
         )
 
 
 def notify_ticket_assigned(ticket):
-    ctx = {
-        'ticket': ticket,
-        'frontend_url': settings.FRONTEND_URL,
-    }
+    if not _notify_enabled('notify_on_ticket_assigned'):
+        return
     if ticket.assigned_to:
+        ctx = {'ticket': ticket, '_plain_text': f'Ticket {ticket.ticket_number} has been assigned to you.'}
         send_ticket_email(
             f'[{ticket.ticket_number}] Ticket assigned to you',
             ticket.assigned_to.email,
@@ -55,10 +103,9 @@ def notify_ticket_assigned(ticket):
 
 
 def notify_status_updated(ticket):
-    ctx = {
-        'ticket': ticket,
-        'frontend_url': settings.FRONTEND_URL,
-    }
+    if not _notify_enabled('notify_on_status_updated'):
+        return
+    ctx = {'ticket': ticket, '_plain_text': f'Ticket {ticket.ticket_number} status updated to {ticket.get_status_display()}.'}
     send_ticket_email(
         f'[{ticket.ticket_number}] Status updated to {ticket.get_status_display()}',
         ticket.requester.email,
@@ -68,10 +115,9 @@ def notify_status_updated(ticket):
 
 
 def notify_comment_added(ticket):
-    ctx = {
-        'ticket': ticket,
-        'frontend_url': settings.FRONTEND_URL,
-    }
+    if not _notify_enabled('notify_on_comment_added'):
+        return
+    ctx = {'ticket': ticket, '_plain_text': f'A new update has been posted on ticket {ticket.ticket_number}.'}
     send_ticket_email(
         f'[{ticket.ticket_number}] New update on your ticket',
         ticket.requester.email,
@@ -81,13 +127,33 @@ def notify_comment_added(ticket):
 
 
 def notify_ticket_resolved(ticket):
-    ctx = {
-        'ticket': ticket,
-        'frontend_url': settings.FRONTEND_URL,
-    }
+    if not _notify_enabled('notify_on_ticket_resolved'):
+        return
+    ctx = {'ticket': ticket, '_plain_text': f'Ticket {ticket.ticket_number} has been resolved.'}
     send_ticket_email(
         f'[{ticket.ticket_number}] Your ticket has been resolved',
         ticket.requester.email,
         'ticket_resolved',
         ctx,
     )
+
+
+def notify_sla_breach(ticket):
+    if not _notify_enabled('notify_on_sla_breach'):
+        return
+    if ticket.assigned_to:
+        ctx = {'ticket': ticket, '_plain_text': f'SLA breach alert for ticket {ticket.ticket_number}.'}
+        send_ticket_email(
+            f'[{ticket.ticket_number}] ⚠️ SLA Breach Alert',
+            ticket.assigned_to.email,
+            'sla_breach',
+            ctx,
+        )
+    if ticket.department and ticket.department.email:
+        ctx = {'ticket': ticket, '_plain_text': f'SLA breach alert for ticket {ticket.ticket_number}.'}
+        send_ticket_email(
+            f'[{ticket.ticket_number}] ⚠️ SLA Breach Alert',
+            ticket.department.email,
+            'sla_breach',
+            {**ctx},
+        )

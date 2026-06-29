@@ -25,8 +25,8 @@
 <body>
 <div class="container">
   <div class="header">
-    <h1>Helpdesk & Ticketing System</h1>
-    <p>Support Portal Notification</p>
+    <h1>{% if settings.portal_name %}{{ settings.portal_name }}{% else %}Helpdesk & Ticketing System{% endif %}</h1>
+    <p>{% if settings.company_name %}{{ settings.company_name }} — {% endif %}Support Portal Notification</p>
   </div>
   <div class="body">
     {% block content %}{% endblock %}
