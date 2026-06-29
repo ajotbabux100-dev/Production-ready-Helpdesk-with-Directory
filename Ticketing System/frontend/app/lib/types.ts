@@ -10,6 +10,8 @@ export interface User {
   department_name: string | null
   avatar: string | null
   is_active: boolean
+  is_deleted?: boolean
+  deleted_alias?: string
   date_joined: string
   is_agent_or_above?: boolean
   is_manager_or_above?: boolean
@@ -26,6 +28,7 @@ export interface Department {
   auto_assign_to: number | null
   auto_assign_to_name: string | null
   routing_mode: 'manager' | 'pool'
+  mention_scope: 'department' | 'all'
   is_active: boolean
   member_count: number
   sla_policies: SLAPolicy[]
@@ -114,6 +117,26 @@ export interface SLAPolicy {
   resolution_time_display: string
 }
 
+export interface TicketParticipant {
+  id: number
+  user: number
+  user_detail: User
+  invited_by: number | null
+  invited_by_detail: User | null
+  status: 'active' | 'contributed' | 'exited'
+  status_display: string
+  invited_at: string
+}
+
+export interface MentionUser {
+  id: number
+  full_name: string
+  email: string
+  role: string
+  department_name: string | null
+  avatar: string | null
+}
+
 export interface Ticket {
   id: number
   ticket_number: string
@@ -141,6 +164,7 @@ export interface Ticket {
   location: string
   comments: Comment[]
   attachments: Attachment[]
+  participants: TicketParticipant[]
   created_at: string
   updated_at: string
 }

@@ -47,6 +47,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
+    is_deleted = models.BooleanField(default=False)
+    deleted_alias = models.CharField(max_length=50, blank=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
     date_joined = models.DateTimeField(auto_now_add=True)
 
     objects = UserManager()
@@ -62,7 +65,9 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     @property
     def full_name(self):
-        return f'{self.first_name} {self.last_name}'
+        if self.is_deleted:
+            return self.deleted_alias or 'Deleted User'
+        return f'{self.first_name} {self.last_name}'.strip() or self.email
 
     @property
     def is_admin(self):

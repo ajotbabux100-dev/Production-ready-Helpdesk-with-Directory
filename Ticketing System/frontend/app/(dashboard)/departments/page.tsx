@@ -8,7 +8,7 @@ import { Input } from '@/app/components/ui/input'
 import { Select } from '@/app/components/ui/select'
 import { Textarea } from '@/app/components/ui/textarea'
 import { Modal } from '@/app/components/ui/modal'
-import { Building2, Plus, Users, Mail, Edit, PowerOff, Power, UserCheck, Tag, GitBranch } from 'lucide-react'
+import { Building2, Plus, Users, Mail, Edit, PowerOff, Power, UserCheck, Tag, GitBranch, AtSign, Trash2, AlertTriangle } from 'lucide-react'
 
 type DeptForm = {
   name: string
@@ -17,6 +17,7 @@ type DeptForm = {
   manager: string
   auto_assign_to: string
   routing_mode: 'manager' | 'pool'
+  mention_scope: 'department' | 'all'
 }
 
 const ROUTING_MODE_LABELS: Record<string, string> = {
@@ -30,9 +31,10 @@ export default function DepartmentsPage() {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Department | null>(null)
-  const [form, setForm] = useState<DeptForm>({ name: '', description: '', email: '', manager: '', auto_assign_to: '', routing_mode: 'manager' })
+  const [form, setForm] = useState<DeptForm>({ name: '', description: '', email: '', manager: '', auto_assign_to: '', routing_mode: 'manager', mention_scope: 'all' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
 
   const fetchDepts = async () => {
     const res = await api.get('/departments/')
@@ -44,7 +46,7 @@ export default function DepartmentsPage() {
 
   const openCreate = async () => {
     setEditing(null)
-    setForm({ name: '', description: '', email: '', manager: '', auto_assign_to: '', routing_mode: 'manager' })
+    setForm({ name: '', description: '', email: '', manager: '', auto_assign_to: '', routing_mode: 'manager', mention_scope: 'all' })
     setError('')
     await loadAgents()
     setModalOpen(true)
@@ -59,6 +61,7 @@ export default function DepartmentsPage() {
       manager: dept.manager ? String(dept.manager) : '',
       auto_assign_to: dept.auto_assign_to ? String(dept.auto_assign_to) : '',
       routing_mode: dept.routing_mode ?? 'manager',
+      mention_scope: dept.mention_scope ?? 'all',
     })
     setError('')
     await loadAgents()
@@ -83,6 +86,7 @@ export default function DepartmentsPage() {
         manager: form.manager ? Number(form.manager) : null,
         auto_assign_to: form.auto_assign_to ? Number(form.auto_assign_to) : null,
         routing_mode: form.routing_mode,
+        mention_scope: form.mention_scope,
       }
       if (editing) {
         await api.patch(`/departments/${editing.id}/`, payload)
@@ -101,6 +105,12 @@ export default function DepartmentsPage() {
   const toggleActive = async (dept: Department) => {
     await api.patch(`/departments/${dept.id}/`, { is_active: !dept.is_active })
     fetchDepts()
+  }
+
+  const deleteDept = async (id: number) => {
+    await api.delete(`/departments/${id}/`)
+    setDepartments((prev) => prev.filter((d) => d.id !== id))
+    setDeleteConfirmId(null)
   }
 
   if (loading) {
@@ -123,16 +133,45 @@ export default function DepartmentsPage() {
         {departments.map((dept) => (
           <Card key={dept.id} className={!dept.is_active ? 'opacity-60' : ''}>
             <CardContent className="p-5">
+              {/* Delete confirmation overlay */}
+              {deleteConfirmId === dept.id && (
+                <div className="mb-3 bg-red-50 border border-red-200 rounded-xl p-3 space-y-2">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs text-red-700">
+                      Delete <strong>{dept.name}</strong>? The department will be anonymised as a sequential alias (e.g. <strong>#dept1</strong>) in all ticket records. This cannot be undone.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => deleteDept(dept.id)}
+                      className="flex-1 py-1.5 text-xs font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700"
+                    >
+                      Yes, Delete
+                    </button>
+                    <button
+                      onClick={() => setDeleteConfirmId(null)}
+                      className="flex-1 py-1.5 text-xs font-semibold border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-start justify-between mb-3">
                 <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
                   <Building2 className="w-5 h-5 text-blue-900" />
                 </div>
                 <div className="flex gap-1">
-                  <button onClick={() => openEdit(dept)} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500">
+                  <button onClick={() => openEdit(dept)} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500" title="Edit">
                     <Edit className="w-4 h-4" />
                   </button>
-                  <button onClick={() => toggleActive(dept)} className={`p-1.5 rounded-md hover:bg-gray-100 ${dept.is_active ? 'text-gray-500' : 'text-green-600'}`}>
+                  <button onClick={() => toggleActive(dept)} className={`p-1.5 rounded-md hover:bg-gray-100 ${dept.is_active ? 'text-gray-500' : 'text-green-600'}`} title={dept.is_active ? 'Deactivate' : 'Activate'}>
                     {dept.is_active ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
+                  </button>
+                  <button onClick={() => setDeleteConfirmId(dept.id)} className="p-1.5 rounded-md hover:bg-red-50 text-gray-400 hover:text-red-500" title="Delete & anonymise">
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -143,6 +182,10 @@ export default function DepartmentsPage() {
                 <p className={`text-xs flex items-center gap-1 font-medium ${dept.routing_mode === 'pool' ? 'text-violet-600' : 'text-gray-500'}`}>
                   <GitBranch className="w-3.5 h-3.5" />
                   {ROUTING_MODE_LABELS[dept.routing_mode] ?? 'Manager Assignment'}
+                </p>
+                <p className={`text-xs flex items-center gap-1 font-medium ${dept.mention_scope === 'department' ? 'text-blue-600' : 'text-gray-400'}`}>
+                  <AtSign className="w-3.5 h-3.5" />
+                  @mention: {dept.mention_scope === 'department' ? 'Department only' : 'All users'}
                 </p>
                 {dept.manager_name && (
                   <p className="text-xs text-gray-500 flex items-center gap-1">
@@ -255,6 +298,30 @@ export default function DepartmentsPage() {
                   }`}
                 >
                   <p className={`text-sm font-semibold ${form.routing_mode === opt.value ? 'text-blue-900' : 'text-gray-800'}`}>{opt.label}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{opt.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-gray-700">@Mention Scope</p>
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                { value: 'all', label: 'All Users', desc: 'Anyone in the system can be @mentioned in ticket comments.' },
+                { value: 'department', label: 'Department Only', desc: 'Only members of this department appear in the @mention picker.' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, mention_scope: opt.value }))}
+                  className={`text-left p-3 rounded-xl border-2 transition-colors ${
+                    form.mention_scope === opt.value
+                      ? 'border-blue-900 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <p className={`text-sm font-semibold ${form.mention_scope === opt.value ? 'text-blue-900' : 'text-gray-800'}`}>{opt.label}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{opt.desc}</p>
                 </button>
               ))}

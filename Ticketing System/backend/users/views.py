@@ -86,8 +86,25 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if user.is_admin:
-            return User.objects.select_related('department').all()
-        return User.objects.filter(id=user.id)
+            return User.objects.select_related('department').filter(is_deleted=False)
+        return User.objects.filter(id=user.id, is_deleted=False)
+
+    def perform_destroy(self, instance):
+        from django.utils import timezone
+        seq = User.objects.filter(is_deleted=True).count() + 1
+        alias = f'#name{seq}'
+        instance.is_deleted = True
+        instance.deleted_alias = alias
+        instance.deleted_at = timezone.now()
+        instance.first_name = alias
+        instance.last_name = ''
+        instance.email = f'deleted_name{seq}_{instance.id}@deleted.invalid'
+        instance.phone = ''
+        instance.is_active = False
+        instance.department = None
+        instance.avatar = None
+        instance.set_unusable_password()
+        instance.save()
 
     def perform_create(self, serializer):
         user = serializer.save()
@@ -126,3 +143,42 @@ class UserViewSet(viewsets.ModelViewSet):
         if dept_id:
             qs = qs.filter(department_id=dept_id)
         return Response(UserMinimalSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='mentionable', permission_classes=[IsAuthenticated])
+    def mentionable(self, request):
+        """
+        Returns users for the @mention dropdown, grouped as:
+          - dept_users: active users in the ticket's department (shown first)
+          - other_users: all other active users who have a department assigned
+        Excludes the current requester and assignee (passed as query params).
+        """
+        ticket_dept_id = request.query_params.get('department')
+        exclude_ids = [int(x) for x in request.query_params.getlist('exclude') if x.isdigit()]
+        exclude_ids.append(request.user.id)
+
+        base = User.objects.filter(is_active=True).exclude(id__in=exclude_ids).select_related('department')
+
+        if ticket_dept_id:
+            dept_users = base.filter(department_id=ticket_dept_id)
+            other_users = base.filter(department__isnull=False).exclude(department_id=ticket_dept_id)
+        else:
+            dept_users = User.objects.none()
+            other_users = base.filter(department__isnull=False)
+
+        def serialize(qs):
+            return [
+                {
+                    'id': u.id,
+                    'full_name': u.full_name,
+                    'email': u.email,
+                    'role': u.role,
+                    'department_name': u.department.name if u.department else None,
+                    'avatar': u.avatar.url if u.avatar else None,
+                }
+                for u in qs
+            ]
+
+        return Response({
+            'dept_users': serialize(dept_users),
+            'other_users': serialize(other_users),
+        })

@@ -192,3 +192,32 @@ class CommentAttachment(models.Model):
     file_size = models.PositiveIntegerField()
     content_type = models.CharField(max_length=100)
     uploaded_at = models.DateTimeField(auto_now_add=True)
+
+
+class TicketParticipant(models.Model):
+    """Tracks users @mentioned/invited into a ticket as contributors."""
+    ACTIVE = 'active'
+    CONTRIBUTED = 'contributed'
+    EXITED = 'exited'
+    STATUS_CHOICES = [
+        (ACTIVE, 'Active'),
+        (CONTRIBUTED, 'Contributed'),
+        (EXITED, 'Exited'),
+    ]
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name='participants')
+    user = models.ForeignKey(
+        'users.User', on_delete=models.CASCADE, related_name='ticket_participations',
+    )
+    invited_by = models.ForeignKey(
+        'users.User', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='sent_invitations',
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=ACTIVE)
+    invited_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('ticket', 'user')
+        ordering = ['invited_at']
+
+    def __str__(self):
+        return f'{self.user} on {self.ticket.ticket_number} ({self.status})'

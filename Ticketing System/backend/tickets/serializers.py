@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Ticket, Comment, Attachment, CommentAttachment, TicketFormConfig, TicketCategory
+from .models import Ticket, Comment, Attachment, CommentAttachment, TicketFormConfig, TicketCategory, TicketParticipant
 from users.serializers import UserMinimalSerializer
 from departments.serializers import DepartmentMinimalSerializer
 from departments.models import Department
@@ -19,6 +19,18 @@ class TicketCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = TicketCategory
         fields = ['id', 'name', 'slug', 'description', 'color', 'is_active', 'order', 'department_ids', 'department_names']
+
+
+class TicketParticipantSerializer(serializers.ModelSerializer):
+    user_detail = UserMinimalSerializer(source='user', read_only=True)
+    invited_by_detail = UserMinimalSerializer(source='invited_by', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+
+    class Meta:
+        model = TicketParticipant
+        fields = ['id', 'user', 'user_detail', 'invited_by', 'invited_by_detail',
+                  'status', 'status_display', 'invited_at']
+        read_only_fields = ['invited_at']
 
 
 class TicketFormConfigSerializer(serializers.ModelSerializer):
@@ -86,16 +98,17 @@ class TicketDetailSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     priority_display = serializers.CharField(source='get_priority_display', read_only=True)
     category_display = serializers.SerializerMethodField()
+    comments = CommentSerializer(many=True, read_only=True)
+    attachments = AttachmentSerializer(many=True, read_only=True)
+    participants = TicketParticipantSerializer(many=True, read_only=True)
+    is_sla_response_breached = serializers.ReadOnlyField()
+    is_sla_resolution_breached = serializers.ReadOnlyField()
 
     def get_category_display(self, obj):
         if not obj.category:
             return ''
         cat = TicketCategory.objects.filter(slug=obj.category).first()
         return cat.name if cat else obj.category.replace('_', ' ').title()
-    comments = CommentSerializer(many=True, read_only=True)
-    attachments = AttachmentSerializer(many=True, read_only=True)
-    is_sla_response_breached = serializers.ReadOnlyField()
-    is_sla_resolution_breached = serializers.ReadOnlyField()
 
     class Meta:
         model = Ticket
@@ -109,7 +122,7 @@ class TicketDetailSerializer(serializers.ModelSerializer):
             'sla_response_due', 'sla_resolution_due',
             'first_response_at', 'resolved_at', 'closed_at',
             'is_sla_response_breached', 'is_sla_resolution_breached',
-            'comments', 'attachments',
+            'comments', 'attachments', 'participants',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['ticket_number', 'requester', 'created_at', 'updated_at']

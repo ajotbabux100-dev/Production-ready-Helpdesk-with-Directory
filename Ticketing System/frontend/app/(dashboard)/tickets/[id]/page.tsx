@@ -1,10 +1,10 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuthStore } from '@/app/lib/store'
 import api from '@/app/lib/api'
-import { Ticket, User, STATUS_COLORS, PRIORITY_COLORS } from '@/app/lib/types'
+import { Ticket, User, STATUS_COLORS, PRIORITY_COLORS, MentionUser } from '@/app/lib/types'
 import { Badge } from '@/app/components/ui/badge'
 import { Button } from '@/app/components/ui/button'
 import { Textarea } from '@/app/components/ui/textarea'
@@ -12,7 +12,7 @@ import { formatDate } from '@/app/lib/utils'
 import {
   ArrowLeft, Paperclip, Send, AlertTriangle, Clock, User as UserIcon,
   Building2, MapPin, Tag, Lock, MessageSquare, CheckCircle2, RefreshCw, UserPlus,
-  TrendingUp, ChevronDown, ChevronUp,
+  TrendingUp, ChevronDown, ChevronUp, AtSign, X, Users, LogOut,
 } from 'lucide-react'
 
 const STATUS_OPTIONS = [
@@ -79,6 +79,16 @@ function Avatar({ name, size = 'sm' }: { name: string; size?: 'sm' | 'md' }) {
   )
 }
 
+/** Returns { atIndex, query } if cursor is immediately after a word-starting @, else null. */
+function getMentionContext(text: string, cursorPos: number): { atIndex: number; query: string } | null {
+  const before = text.slice(0, cursorPos)
+  // Only trigger when @ is at position 0 or preceded by whitespace
+  const match = before.match(/(^|\s)@(\S*)$/)
+  if (!match) return null
+  const atIndex = before.lastIndexOf('@')
+  return { atIndex, query: match[2] }
+}
+
 export default function TicketDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
@@ -96,6 +106,15 @@ export default function TicketDetailPage() {
   const [escalateReason, setEscalateReason] = useState('')
   const [escalateError, setEscalateError] = useState('')
 
+  // @mention state
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const [mentionOpen, setMentionOpen] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState('')
+  const [mentionUsers, setMentionUsers] = useState<{ dept_users: MentionUser[]; other_users: MentionUser[] }>({ dept_users: [], other_users: [] })
+  const [pendingMentions, setPendingMentions] = useState<MentionUser[]>([])
+  const [participantLoading, setParticipantLoading] = useState(false)
+
   useEffect(() => {
     fetchTicket()
     if (user && user.role !== 'end_user') {
@@ -108,8 +127,69 @@ export default function TicketDetailPage() {
       const res = await api.get<Ticket>(`/tickets/${id}/`)
       setTicket(res.data)
       setSelectedStatus(res.data.status)
+      // Fetch mentionable users based on ticket department
+      const dept = res.data.department
+      const excludeIds: number[] = [res.data.requester]
+      if (res.data.assigned_to) excludeIds.push(res.data.assigned_to)
+      const params = new URLSearchParams()
+      if (dept) params.set('department', String(dept))
+      excludeIds.forEach((eid) => params.append('exclude', String(eid)))
+      api.get(`/auth/users/mentionable/?${params}`).then((r) => setMentionUsers(r.data)).catch(() => {})
     } catch { router.push('/tickets') }
     finally { setLoading(false) }
+  }
+
+  const handleCommentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value
+    setComment(val)
+    const cursor = e.target.selectionStart ?? val.length
+    const ctx = getMentionContext(val, cursor)
+    if (ctx) {
+      setMentionQuery(ctx.query)
+      setMentionOpen(true)
+    } else {
+      setMentionOpen(false)
+    }
+  }
+
+  const handleTextareaKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionOpen && e.key === 'Escape') {
+      setMentionOpen(false)
+    }
+  }
+
+  const handleMentionSelect = (mentionUser: MentionUser) => {
+    if (!textareaRef.current) return
+    const textarea = textareaRef.current
+    const cursor = textarea.selectionStart ?? comment.length
+    const ctx = getMentionContext(comment, cursor)
+    if (!ctx) return
+
+    // Replace @<query> with @FullName and a trailing space
+    const before = comment.slice(0, ctx.atIndex)
+    const after = comment.slice(cursor)
+    const inserted = `@${mentionUser.full_name} `
+    const newComment = before + inserted + after
+    setComment(newComment)
+    setMentionOpen(false)
+
+    // Add to pending mentions if not already there
+    setPendingMentions((prev) =>
+      prev.find((p) => p.id === mentionUser.id) ? prev : [...prev, mentionUser]
+    )
+
+    // Restore focus and move cursor after inserted text
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newPos = before.length + inserted.length
+        textareaRef.current.focus()
+        textareaRef.current.setSelectionRange(newPos, newPos)
+      }
+    }, 0)
+  }
+
+  const removePendingMention = (userId: number) => {
+    setPendingMentions((prev) => prev.filter((p) => p.id !== userId))
   }
 
   const submitComment = async (e: React.FormEvent) => {
@@ -118,7 +198,12 @@ export default function TicketDetailPage() {
     setCommentLoading(true)
     try {
       await api.post(`/tickets/${id}/add_comment/`, { body: comment, is_internal: isInternal })
+      // Invite any @mentioned users who aren't already participants
+      const existingParticipantIds = ticket?.participants?.map((p) => p.user) ?? []
+      const toInvite = pendingMentions.filter((m) => !existingParticipantIds.includes(m.id))
+      await Promise.allSettled(toInvite.map((m) => api.post(`/tickets/${id}/invite/`, { user_id: m.id })))
       setComment('')
+      setPendingMentions([])
       fetchTicket()
     } finally { setCommentLoading(false) }
   }
@@ -171,6 +256,22 @@ export default function TicketDetailPage() {
     } finally { setActionLoading(false) }
   }
 
+  const markContributed = async () => {
+    setParticipantLoading(true)
+    try {
+      await api.post(`/tickets/${id}/mark_contributed/`)
+      fetchTicket()
+    } finally { setParticipantLoading(false) }
+  }
+
+  const exitParticipation = async () => {
+    setParticipantLoading(true)
+    try {
+      await api.post(`/tickets/${id}/exit_participation/`)
+      fetchTicket()
+    } finally { setParticipantLoading(false) }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -182,6 +283,21 @@ export default function TicketDetailPage() {
 
   const isAgent = user?.role !== 'end_user'
   const visibleComments = ticket.comments.filter((c) => !c.is_internal || isAgent)
+  const activeParticipants = (ticket.participants ?? []).filter((p) => p.status !== 'exited')
+  const myParticipation = (ticket.participants ?? []).find((p) => p.user === user?.id && p.status !== 'exited')
+
+  // filtered mention list — respect the department's mention_scope setting
+  const q = mentionQuery.toLowerCase()
+  const deptMentionScope = ticket.department_detail?.mention_scope ?? 'all'
+  const filterUsers = (list: MentionUser[]) =>
+    list.filter(
+      (u) =>
+        u.full_name.toLowerCase().includes(q) ||
+        u.email.toLowerCase().includes(q)
+    )
+  const filteredDeptUsers = filterUsers(mentionUsers.dept_users)
+  const filteredOtherUsers = deptMentionScope === 'department' ? [] : filterUsers(mentionUsers.other_users)
+  const hasMentionResults = filteredDeptUsers.length > 0 || filteredOtherUsers.length > 0
 
   return (
     <div className="max-w-6xl mx-auto space-y-4">
@@ -201,6 +317,11 @@ export default function TicketDetailPage() {
             {ticket.is_sla_resolution_breached && (
               <span className="flex items-center gap-1 text-xs font-semibold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">
                 <AlertTriangle className="w-3 h-3" /> SLA Breached
+              </span>
+            )}
+            {myParticipation && (
+              <span className="flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                <AtSign className="w-3 h-3" /> Invited contributor
               </span>
             )}
           </div>
@@ -334,13 +455,118 @@ export default function TicketDetailPage() {
                   </button>
                 </div>
               )}
-              <Textarea
-                placeholder={isInternal ? 'Write an internal note (not visible to requester)...' : 'Add a reply or update...'}
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                rows={3}
-                className={isInternal ? 'border-yellow-300 bg-yellow-50 focus:border-yellow-400' : ''}
-              />
+
+              {/* Textarea with @mention dropdown */}
+              <div className="relative">
+                {mentionOpen && (
+                  <div
+                    ref={dropdownRef}
+                    className="absolute bottom-full left-0 right-0 mb-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 overflow-hidden"
+                    style={{ maxHeight: '240px', overflowY: 'auto' }}
+                    // Prevent blur from closing before click registers
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    {filteredDeptUsers.length > 0 && (
+                      <>
+                        <div className="px-3 py-1.5 text-xs font-semibold text-gray-400 bg-gray-50 border-b border-gray-100 sticky top-0">
+                          Department
+                        </div>
+                        {filteredDeptUsers.map((u) => (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => handleMentionSelect(u)}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-blue-50 text-left transition-colors"
+                          >
+                            <div className="w-7 h-7 rounded-full bg-blue-900 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 uppercase">
+                              {u.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-900 truncate">{u.full_name}</p>
+                              <p className="text-xs text-gray-400 truncate">{u.email}</p>
+                            </div>
+                            <span className="ml-auto text-xs text-gray-300 capitalize shrink-0">{u.role.replace('_', ' ')}</span>
+                          </button>
+                        ))}
+                      </>
+                    )}
+                    {filteredOtherUsers.length > 0 && (
+                      <>
+                        <div className="px-3 py-1.5 text-xs font-semibold text-gray-400 bg-gray-50 border-b border-gray-100 sticky top-0">
+                          All Users
+                        </div>
+                        {filteredOtherUsers.map((u) => (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => handleMentionSelect(u)}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-blue-50 text-left transition-colors"
+                          >
+                            <div className="w-7 h-7 rounded-full bg-gray-500 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 uppercase">
+                              {u.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-900 truncate">{u.full_name}</p>
+                              <p className="text-xs text-gray-400 truncate">
+                                {u.department_name ? `${u.department_name} · ` : ''}{u.email}
+                              </p>
+                            </div>
+                            <span className="ml-auto text-xs text-gray-300 capitalize shrink-0">{u.role.replace('_', ' ')}</span>
+                          </button>
+                        ))}
+                      </>
+                    )}
+                    {!hasMentionResults && (
+                      <div className="px-3 py-4 text-sm text-gray-400 text-center">
+                        No users found for &quot;{mentionQuery}&quot;
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <Textarea
+                  ref={textareaRef}
+                  placeholder={
+                    isInternal
+                      ? 'Write an internal note (not visible to requester)... Type @ to mention a user'
+                      : 'Add a reply or update... Type @ to mention a user'
+                  }
+                  value={comment}
+                  onChange={handleCommentChange}
+                  onKeyDown={handleTextareaKeyDown}
+                  onBlur={() => setTimeout(() => setMentionOpen(false), 150)}
+                  onFocus={(e) => {
+                    const ctx = getMentionContext(e.target.value, e.target.selectionStart ?? 0)
+                    if (ctx) { setMentionQuery(ctx.query); setMentionOpen(true) }
+                  }}
+                  rows={3}
+                  className={isInternal ? 'border-yellow-300 bg-yellow-50 focus:border-yellow-400' : ''}
+                />
+              </div>
+
+              {/* Pending @mention pills */}
+              {pendingMentions.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  <span className="text-xs text-gray-400 self-center">Will invite:</span>
+                  {pendingMentions.map((m) => (
+                    <span
+                      key={m.id}
+                      className="flex items-center gap-1 bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full"
+                    >
+                      <AtSign className="w-2.5 h-2.5" />
+                      {m.full_name}
+                      <button
+                        type="button"
+                        onClick={() => removePendingMention(m.id)}
+                        className="text-blue-500 hover:text-blue-700 ml-0.5"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+
               <div className="flex justify-end mt-2">
                 <Button type="submit" loading={commentLoading} size="sm" className="gap-1.5">
                   <Send className="w-3.5 h-3.5" />
@@ -407,6 +633,70 @@ export default function TicketDetailPage() {
               )}
             </div>
           </div>
+
+          {/* Contributors panel */}
+          {(activeParticipants.length > 0 || myParticipation) && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-3">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-gray-400" />
+                <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">
+                  Contributors ({activeParticipants.length})
+                </h2>
+              </div>
+
+              <div className="space-y-2">
+                {activeParticipants.map((p) => (
+                  <div key={p.id} className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-800 text-xs font-bold flex items-center justify-center flex-shrink-0 uppercase">
+                      {p.user_detail.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {p.user_detail.full_name}
+                        {p.user === user?.id && <span className="text-gray-400 font-normal"> (you)</span>}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        Invited by {p.invited_by_detail?.full_name ?? 'system'} · {formatDate(p.invited_at)}
+                      </p>
+                    </div>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
+                      p.status === 'contributed'
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-blue-100 text-blue-700'
+                    }`}>
+                      {p.status_display}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Action buttons for the current user's participation */}
+              {myParticipation && (
+                <div className="border-t border-gray-100 pt-3 flex gap-2">
+                  {myParticipation.status !== 'contributed' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1 text-green-700 border-green-200 hover:bg-green-50"
+                      loading={participantLoading}
+                      onClick={markContributed}
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Mark Contributed
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 text-gray-600 border-gray-200 hover:bg-gray-50"
+                    loading={participantLoading}
+                    onClick={exitParticipation}
+                  >
+                    <LogOut className="w-3.5 h-3.5 mr-1" /> Exit
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Agent actions */}
           {isAgent && (
@@ -534,7 +824,7 @@ export default function TicketDetailPage() {
             </div>
           )}
 
-          {/* Pool-mode claim banner — shown when dept is pool-routed, ticket is unassigned, and viewer is an agent */}
+          {/* Pool-mode claim banner */}
           {isAgent && ticket.department_detail?.routing_mode === 'pool' && !ticket.assigned_to && (
             <div className="bg-violet-50 border border-violet-200 rounded-2xl p-5 space-y-3">
               <div className="flex items-start gap-3">
@@ -556,7 +846,7 @@ export default function TicketDetailPage() {
             </div>
           )}
 
-          {/* Reopen / Unassign — shown when ticket is assigned, resolved, or closed */}
+          {/* Reopen / Unassign */}
           {(ticket.status === 'resolved' || ticket.status === 'closed' || ticket.status === 'assigned') && (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-3">
               <div className="flex items-start gap-3">

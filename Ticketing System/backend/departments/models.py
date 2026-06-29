@@ -35,7 +35,24 @@ class Department(models.Model):
             'Department Pool: all department members see new tickets and any one of them can claim and resolve it.'
         ),
     )
+
+    MENTION_DEPT = 'department'
+    MENTION_ALL = 'all'
+    MENTION_SCOPE_CHOICES = [
+        (MENTION_DEPT, 'Department Only'),
+        (MENTION_ALL, 'All Users'),
+    ]
+    mention_scope = models.CharField(
+        max_length=20,
+        choices=MENTION_SCOPE_CHOICES,
+        default=MENTION_ALL,
+        help_text='Controls who can be @mentioned in ticket comments for this department.',
+    )
+
     is_active = models.BooleanField(default=True)
+    is_deleted = models.BooleanField(default=False)
+    deleted_alias = models.CharField(max_length=50, blank=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

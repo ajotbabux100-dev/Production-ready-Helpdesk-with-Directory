@@ -13,9 +13,10 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'first_name', 'last_name', 'full_name',
             'phone', 'role', 'department', 'department_name',
-            'avatar', 'is_active', 'date_joined', 'password',
+            'avatar', 'is_active', 'is_deleted', 'deleted_alias',
+            'date_joined', 'password',
         ]
-        read_only_fields = ['id', 'date_joined']
+        read_only_fields = ['id', 'date_joined', 'is_deleted', 'deleted_alias']
 
     def validate_department(self, value):
         if value is None:

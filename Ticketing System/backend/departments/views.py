@@ -9,7 +9,7 @@ from users.permissions import IsAdminUser, IsManagerOrAbove
 
 
 class DepartmentViewSet(viewsets.ModelViewSet):
-    queryset = Department.objects.prefetch_related('sla_policies').select_related('manager', 'auto_assign_to').all()
+    queryset = Department.objects.prefetch_related('sla_policies').select_related('manager', 'auto_assign_to').filter(is_deleted=False)
     filter_backends = [DjangoFilterBackend, SearchFilter]
     filterset_fields = ['is_active']
     search_fields = ['name']
@@ -23,6 +23,21 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [IsAdminUser()]
         return [IsAuthenticated()]
+
+    def perform_destroy(self, instance):
+        from django.utils import timezone
+        seq = Department.objects.filter(is_deleted=True).count() + 1
+        alias = f'#dept{seq}'
+        instance.is_deleted = True
+        instance.deleted_alias = alias
+        instance.deleted_at = timezone.now()
+        instance.name = alias
+        instance.description = ''
+        instance.email = ''
+        instance.is_active = False
+        instance.manager = None
+        instance.auto_assign_to = None
+        instance.save()
 
 
 class SLAPolicyViewSet(viewsets.ModelViewSet):

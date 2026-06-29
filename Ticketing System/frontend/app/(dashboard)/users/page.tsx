@@ -8,7 +8,7 @@ import { Input } from '@/app/components/ui/input'
 import { Select } from '@/app/components/ui/select'
 import { Modal } from '@/app/components/ui/modal'
 import { Badge } from '@/app/components/ui/badge'
-import { Plus, Edit, UserX, UserCheck } from 'lucide-react'
+import { Plus, Edit, UserX, UserCheck, Trash2, AlertTriangle } from 'lucide-react'
 import { formatDateShort } from '@/app/lib/utils'
 
 const ROLES = [
@@ -37,6 +37,7 @@ export default function UsersPage() {
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [search, setSearch] = useState('')
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
 
   const fetchAll = async () => {
     const [usersRes, deptsRes] = await Promise.all([
@@ -107,6 +108,12 @@ export default function UsersPage() {
     setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, ...res.data } : u)))
   }
 
+  const deleteUser = async (id: number) => {
+    await api.delete(`/auth/users/${id}/`)
+    setUsers((prev) => prev.filter((u) => u.id !== id))
+    setDeleteConfirmId(null)
+  }
+
   return (
     <div className="max-w-7xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
@@ -139,11 +146,35 @@ export default function UsersPage() {
               {loading ? (
                 <tr><td colSpan={7} className="text-center py-12 text-gray-400">Loading…</td></tr>
               ) : users.map((user) => (
+                deleteConfirmId === user.id ? (
+                  <tr key={user.id} className="border-b border-red-100 bg-red-50">
+                    <td colSpan={7} className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                        <span className="text-sm text-red-700 flex-1">
+                          Delete <strong>{user.full_name}</strong>? Their name will be anonymised as a sequential alias (e.g. <strong>#name1</strong>) in all records. This cannot be undone.
+                        </span>
+                        <button
+                          onClick={() => deleteUser(user.id)}
+                          className="px-3 py-1.5 text-xs font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700"
+                        >
+                          Yes, Delete
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirmId(null)}
+                          className="px-3 py-1.5 text-xs font-semibold border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-100"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
                 <tr key={user.id} className="border-b border-gray-50 hover:bg-gray-50">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-blue-900 text-white text-xs font-bold flex items-center justify-center">
-                        {user.first_name[0]}{user.last_name[0]}
+                        {(user.first_name[0] ?? '?').toUpperCase()}{(user.last_name[0] ?? '').toUpperCase()}
                       </div>
                       <span className="font-medium text-gray-900">{user.full_name}</span>
                     </div>
@@ -161,15 +192,19 @@ export default function UsersPage() {
                   <td className="px-4 py-3 text-gray-500">{formatDateShort(user.date_joined)}</td>
                   <td className="px-4 py-3">
                     <div className="flex gap-1">
-                      <button onClick={() => openEdit(user)} className="p-1.5 rounded hover:bg-gray-100 text-gray-500">
+                      <button onClick={() => openEdit(user)} className="p-1.5 rounded hover:bg-gray-100 text-gray-500" title="Edit">
                         <Edit className="w-4 h-4" />
                       </button>
-                      <button onClick={() => toggleActive(user)} className={`p-1.5 rounded hover:bg-gray-100 ${user.is_active ? 'text-gray-500' : 'text-green-600'}`}>
+                      <button onClick={() => toggleActive(user)} className={`p-1.5 rounded hover:bg-gray-100 ${user.is_active ? 'text-gray-500' : 'text-green-600'}`} title={user.is_active ? 'Deactivate' : 'Activate'}>
                         {user.is_active ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                      </button>
+                      <button onClick={() => setDeleteConfirmId(user.id)} className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500" title="Delete & anonymise">
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </td>
                 </tr>
+                )
               ))}
             </tbody>
           </table>

@@ -7,11 +7,11 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 
 from rest_framework.views import APIView
-from .models import Ticket, Comment, Attachment, TicketFormConfig, TicketCategory
+from .models import Ticket, Comment, Attachment, TicketFormConfig, TicketCategory, TicketParticipant
 from .serializers import (
     TicketListSerializer, TicketDetailSerializer,
     TicketCreateSerializer, CommentSerializer, AttachmentSerializer,
-    TicketFormConfigSerializer, TicketCategorySerializer,
+    TicketFormConfigSerializer, TicketCategorySerializer, TicketParticipantSerializer,
 )
 from .filters import TicketFilter
 from .sla import apply_sla
@@ -34,15 +34,21 @@ class TicketViewSet(viewsets.ModelViewSet):
         user = self.request.user
         qs = Ticket.objects.select_related(
             'requester', 'department', 'assigned_to'
-        ).prefetch_related('comments', 'attachments')
+        ).prefetch_related('comments', 'attachments', 'participants__user', 'participants__invited_by')
+
+        # Invited/participated tickets visible to everyone regardless of role
+        invited_qs = qs.filter(
+            participants__user=user,
+            participants__status__in=(TicketParticipant.ACTIVE, TicketParticipant.CONTRIBUTED),
+        )
 
         if user.is_admin:
             return qs.all()
         if user.is_manager_or_above:
-            return qs.filter(department=user.department)
+            return (qs.filter(department=user.department) | invited_qs).distinct()
         if user.is_agent_or_above:
-            return qs.filter(assigned_to=user) | qs.filter(department=user.department)
-        return qs.filter(requester=user)
+            return (qs.filter(assigned_to=user) | qs.filter(department=user.department) | invited_qs).distinct()
+        return (qs.filter(requester=user) | invited_qs).distinct()
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
@@ -217,6 +223,67 @@ class TicketViewSet(viewsets.ModelViewSet):
                    ticket=ticket, request=request)
         send_ticket_notification.delay('status_updated', ticket.id)
         return Response(TicketDetailSerializer(ticket).data)
+
+    @action(detail=True, methods=['post'])
+    def invite(self, request, pk=None):
+        """@mention: invite a user as a contributor to this ticket."""
+        ticket = self.get_object()
+        user_id = request.data.get('user_id')
+        if not user_id:
+            return Response({'error': 'user_id is required.'}, status=400)
+        from users.models import User as UserModel
+        try:
+            invitee = UserModel.objects.get(id=user_id, is_active=True)
+        except UserModel.DoesNotExist:
+            return Response({'error': 'User not found.'}, status=404)
+        if invitee == ticket.requester or invitee == ticket.assigned_to:
+            return Response({'error': 'This user is already the requester or assignee.'}, status=400)
+
+        participant, created = TicketParticipant.objects.get_or_create(
+            ticket=ticket, user=invitee,
+            defaults={'invited_by': request.user, 'status': TicketParticipant.ACTIVE},
+        )
+        if not created and participant.status == TicketParticipant.EXITED:
+            participant.status = TicketParticipant.ACTIVE
+            participant.invited_by = request.user
+            participant.save(update_fields=['status', 'invited_by'])
+
+        if created or participant.status == TicketParticipant.ACTIVE:
+            from notifications.email import _push
+            _push(
+                invitee, ticket, 'ticket_assigned',
+                f'{request.user.full_name} mentioned you in ticket {ticket.ticket_number}',
+                f'You have been invited to contribute to "{ticket.title}".',
+            )
+
+        log_action(request.user, AuditLog.COMMENT_ADDED,
+                   description=f'{invitee.full_name} invited to {ticket.ticket_number} by {request.user.full_name}',
+                   ticket=ticket, request=request)
+        return Response(TicketParticipantSerializer(participant).data, status=201 if created else 200)
+
+    @action(detail=True, methods=['post'], url_path='exit_participation')
+    def exit_participation(self, request, pk=None):
+        """Invited user removes themselves from the ticket."""
+        ticket = self.get_object()
+        try:
+            p = TicketParticipant.objects.get(ticket=ticket, user=request.user)
+        except TicketParticipant.DoesNotExist:
+            return Response({'error': 'You are not a participant of this ticket.'}, status=404)
+        p.status = TicketParticipant.EXITED
+        p.save(update_fields=['status'])
+        return Response({'status': 'exited'})
+
+    @action(detail=True, methods=['post'], url_path='mark_contributed')
+    def mark_contributed(self, request, pk=None):
+        """Invited user marks their participation as contributed."""
+        ticket = self.get_object()
+        try:
+            p = TicketParticipant.objects.get(ticket=ticket, user=request.user)
+        except TicketParticipant.DoesNotExist:
+            return Response({'error': 'You are not a participant of this ticket.'}, status=404)
+        p.status = TicketParticipant.CONTRIBUTED
+        p.save(update_fields=['status'])
+        return Response({'status': 'contributed'})
 
     @action(detail=True, methods=['post'])
     def add_comment(self, request, pk=None):

@@ -7,7 +7,7 @@ import { Ticket, PaginatedResponse, STATUS_COLORS, PRIORITY_COLORS } from '@/app
 import { Badge } from '@/app/components/ui/badge'
 import { Button } from '@/app/components/ui/button'
 import { formatDate } from '@/app/lib/utils'
-import { Plus, Search, AlertTriangle, Clock, ChevronLeft, ChevronRight, Ticket as TicketIcon, CheckCircle2, Archive } from 'lucide-react'
+import { Plus, Search, AlertTriangle, Clock, ChevronLeft, ChevronRight, Ticket as TicketIcon, CheckCircle2, Archive, AtSign } from 'lucide-react'
 
 // Active = anything not resolved/closed
 const ACTIVE_STATUSES = ['new', 'assigned', 'in_progress', 'pending_user', 'pending_vendor', 'escalated', 'reopened']
@@ -67,7 +67,7 @@ function SLACell({ ticket }: { ticket: Ticket }) {
 }
 
 const PAGE_SIZE = 20
-type TabType = 'active' | 'resolved'
+type TabType = 'active' | 'resolved' | 'invited'
 
 export default function TicketsPage() {
   const user = useAuthStore((s) => s.user)
@@ -76,6 +76,7 @@ export default function TicketsPage() {
   const [count, setCount] = useState(0)
   const [activeCount, setActiveCount] = useState(0)
   const [resolvedCount, setResolvedCount] = useState(0)
+  const [invitedCount, setInvitedCount] = useState(0)
   const [page, setPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -90,10 +91,11 @@ export default function TicketsPage() {
       if (search) params.set('search', search)
       if (priority) params.set('priority', priority)
 
-      if (status) {
+      if (tab === 'invited') {
+        params.set('invited_only', 'true')
+      } else if (status) {
         params.set('status', status)
       } else {
-        // Filter by tab's status group
         const statuses = tab === 'active' ? ACTIVE_STATUSES : RESOLVED_STATUSES
         params.set('status__in', statuses.join(','))
       }
@@ -105,16 +107,19 @@ export default function TicketsPage() {
     finally { setLoading(false) }
   }, [page, search, status, priority, tab])
 
-  // Fetch tab counts separately (no filters, just status groups)
+  // Fetch tab counts
   useEffect(() => {
     const p1 = new URLSearchParams({ page_size: '1', status__in: ACTIVE_STATUSES.join(',') })
     const p2 = new URLSearchParams({ page_size: '1', status__in: RESOLVED_STATUSES.join(',') })
+    const p3 = new URLSearchParams({ page_size: '1', invited_only: 'true' })
     Promise.all([
       api.get<PaginatedResponse<Ticket>>(`/tickets/?${p1}`),
       api.get<PaginatedResponse<Ticket>>(`/tickets/?${p2}`),
-    ]).then(([a, r]) => {
+      api.get<PaginatedResponse<Ticket>>(`/tickets/?${p3}`),
+    ]).then(([a, r, inv]) => {
       setActiveCount(a.data.count)
       setResolvedCount(r.data.count)
+      setInvitedCount(inv.data.count)
     }).catch(() => {})
   }, [])
 
@@ -136,6 +141,7 @@ export default function TicketsPage() {
 
   const totalPages = Math.ceil(count / PAGE_SIZE)
   const statusOptions = tab === 'active' ? ACTIVE_STATUS_OPTIONS : RESOLVED_STATUS_OPTIONS
+  const showStatusFilter = tab !== 'invited'
 
   return (
     <div className="max-w-7xl mx-auto space-y-4">
@@ -143,7 +149,10 @@ export default function TicketsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Tickets</h1>
-          <p className="text-sm text-gray-400">{count} {tab === 'active' ? 'active' : 'resolved/closed'}{search || status || priority ? ' · filtered' : ''}</p>
+          <p className="text-sm text-gray-400">
+            {count} {tab === 'active' ? 'active' : tab === 'resolved' ? 'resolved/closed' : 'invited'}
+            {search || status || priority ? ' · filtered' : ''}
+          </p>
         </div>
         <Link href="/tickets/new">
           <Button className="gap-2 shadow-sm">
@@ -182,6 +191,20 @@ export default function TicketsPage() {
             </span>
           )}
         </button>
+        <button
+          onClick={() => switchTab('invited')}
+          className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            tab === 'invited' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <AtSign className="w-4 h-4" />
+          Invited
+          {invitedCount > 0 && (
+            <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${tab === 'invited' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600'}`}>
+              {invitedCount}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Filter bar */}
@@ -197,13 +220,15 @@ export default function TicketsPage() {
               className="w-full pl-10 pr-4 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900 transition-all"
             />
           </div>
-          <select
-            value={status}
-            onChange={(e) => { setStatus(e.target.value); setPage(1) }}
-            className="h-10 px-3 pr-8 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900/20 bg-white text-gray-700"
-          >
-            {statusOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+          {showStatusFilter && (
+            <select
+              value={status}
+              onChange={(e) => { setStatus(e.target.value); setPage(1) }}
+              className="h-10 px-3 pr-8 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900/20 bg-white text-gray-700"
+            >
+              {statusOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          )}
           <select
             value={priority}
             onChange={(e) => { setPriority(e.target.value); setPage(1) }}
@@ -260,6 +285,8 @@ export default function TicketsPage() {
                   <td colSpan={8} className="py-16 text-center">
                     {tab === 'resolved'
                       ? <><Archive className="w-10 h-10 mx-auto mb-3 text-gray-200" /><p className="text-gray-400">No resolved or closed tickets</p></>
+                      : tab === 'invited'
+                      ? <><AtSign className="w-10 h-10 mx-auto mb-3 text-gray-200" /><p className="text-gray-400">No tickets where you have been invited as a contributor</p></>
                       : <><TicketIcon className="w-10 h-10 mx-auto mb-3 text-gray-200" /><p className="text-gray-400">No active tickets</p></>
                     }
                   </td>
