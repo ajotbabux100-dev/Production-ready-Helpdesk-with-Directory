@@ -70,9 +70,29 @@ def _notify_enabled(flag_name):
     return getattr(s, flag_name, True)
 
 
+def _push(recipient, ticket, notification_type, title, message):
+    """Create an in-app Notification record for the given recipient."""
+    from .models import Notification
+    try:
+        Notification.objects.create(
+            recipient=recipient,
+            ticket=ticket,
+            notification_type=notification_type,
+            title=title,
+            message=message,
+        )
+    except Exception as e:
+        print(f'In-app notification error: {e}')
+
+
 def notify_ticket_created(ticket):
     if not _notify_enabled('notify_on_ticket_created'):
         return
+
+    title = f'Ticket {ticket.ticket_number} received'
+    message = f'Your ticket "{ticket.title}" has been received and is being reviewed.'
+    _push(ticket.requester, ticket, 'ticket_created', title, message)
+
     ctx = {'ticket': ticket, '_plain_text': f'Your ticket {ticket.ticket_number} has been received.'}
     send_ticket_email(
         f'[{ticket.ticket_number}] Your ticket has been received',
@@ -92,19 +112,30 @@ def notify_ticket_created(ticket):
 def notify_ticket_assigned(ticket):
     if not _notify_enabled('notify_on_ticket_assigned'):
         return
-    if ticket.assigned_to:
-        ctx = {'ticket': ticket, '_plain_text': f'Ticket {ticket.ticket_number} has been assigned to you.'}
-        send_ticket_email(
-            f'[{ticket.ticket_number}] Ticket assigned to you',
-            ticket.assigned_to.email,
-            'ticket_assigned',
-            ctx,
-        )
+    if not ticket.assigned_to:
+        return
+
+    title = f'Ticket {ticket.ticket_number} assigned to you'
+    message = f'"{ticket.title}" has been assigned to you. Priority: {ticket.get_priority_display()}.'
+    _push(ticket.assigned_to, ticket, 'ticket_assigned', title, message)
+
+    ctx = {'ticket': ticket, '_plain_text': f'Ticket {ticket.ticket_number} has been assigned to you.'}
+    send_ticket_email(
+        f'[{ticket.ticket_number}] Ticket assigned to you',
+        ticket.assigned_to.email,
+        'ticket_assigned',
+        ctx,
+    )
 
 
 def notify_status_updated(ticket):
     if not _notify_enabled('notify_on_status_updated'):
         return
+
+    title = f'Ticket {ticket.ticket_number} status updated'
+    message = f'Your ticket "{ticket.title}" status changed to {ticket.get_status_display()}.'
+    _push(ticket.requester, ticket, 'status_updated', title, message)
+
     ctx = {'ticket': ticket, '_plain_text': f'Ticket {ticket.ticket_number} status updated to {ticket.get_status_display()}.'}
     send_ticket_email(
         f'[{ticket.ticket_number}] Status updated to {ticket.get_status_display()}',
@@ -117,6 +148,11 @@ def notify_status_updated(ticket):
 def notify_comment_added(ticket):
     if not _notify_enabled('notify_on_comment_added'):
         return
+
+    title = f'New reply on ticket {ticket.ticket_number}'
+    message = f'A new update has been posted on your ticket "{ticket.title}".'
+    _push(ticket.requester, ticket, 'comment_added', title, message)
+
     ctx = {'ticket': ticket, '_plain_text': f'A new update has been posted on ticket {ticket.ticket_number}.'}
     send_ticket_email(
         f'[{ticket.ticket_number}] New update on your ticket',
@@ -129,6 +165,11 @@ def notify_comment_added(ticket):
 def notify_ticket_resolved(ticket):
     if not _notify_enabled('notify_on_ticket_resolved'):
         return
+
+    title = f'Ticket {ticket.ticket_number} resolved'
+    message = f'Your ticket "{ticket.title}" has been resolved.'
+    _push(ticket.requester, ticket, 'ticket_resolved', title, message)
+
     ctx = {'ticket': ticket, '_plain_text': f'Ticket {ticket.ticket_number} has been resolved.'}
     send_ticket_email(
         f'[{ticket.ticket_number}] Your ticket has been resolved',
@@ -138,10 +179,44 @@ def notify_ticket_resolved(ticket):
     )
 
 
+def notify_ticket_escalated(ticket, escalated_by, reason=''):
+    """Email + in-app notification for the manager who receives the escalated ticket."""
+    if not ticket.assigned_to:
+        return
+
+    title = f'Ticket {ticket.ticket_number} escalated to you'
+    message = (
+        f'"{ticket.title}" was escalated to you by {escalated_by}.'
+        + (f' Reason: {reason}' if reason else '')
+    )
+    _push(ticket.assigned_to, ticket, 'ticket_escalated', title, message)
+
+    ctx = {
+        'ticket': ticket,
+        'escalated_by': escalated_by,
+        'escalation_reason': reason,
+        '_plain_text': (
+            f'Ticket {ticket.ticket_number} has been escalated to you by {escalated_by}.'
+            + (f' Reason: {reason}' if reason else '')
+        ),
+    }
+    send_ticket_email(
+        f'[{ticket.ticket_number}] ⚠️ Ticket Escalated to You',
+        ticket.assigned_to.email,
+        'ticket_escalated',
+        ctx,
+    )
+
+
 def notify_sla_breach(ticket):
     if not _notify_enabled('notify_on_sla_breach'):
         return
+
     if ticket.assigned_to:
+        title = f'SLA breach — ticket {ticket.ticket_number}'
+        message = f'SLA resolution deadline has been breached for ticket "{ticket.title}".'
+        _push(ticket.assigned_to, ticket, 'sla_breach', title, message)
+
         ctx = {'ticket': ticket, '_plain_text': f'SLA breach alert for ticket {ticket.ticket_number}.'}
         send_ticket_email(
             f'[{ticket.ticket_number}] ⚠️ SLA Breach Alert',

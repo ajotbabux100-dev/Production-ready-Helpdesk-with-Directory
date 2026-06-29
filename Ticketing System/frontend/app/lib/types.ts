@@ -25,6 +25,7 @@ export interface Department {
   manager_name: string | null
   auto_assign_to: number | null
   auto_assign_to_name: string | null
+  routing_mode: 'manager' | 'pool'
   is_active: boolean
   member_count: number
   sla_policies: SLAPolicy[]

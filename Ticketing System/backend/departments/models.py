@@ -20,6 +20,21 @@ class Department(models.Model):
         related_name='auto_assigned_departments',
         help_text='Auto-assign new tickets in this department to this person',
     )
+    ROUTE_MANAGER = 'manager'
+    ROUTE_POOL = 'pool'
+    ROUTING_CHOICES = [
+        (ROUTE_MANAGER, 'Manager Assignment'),
+        (ROUTE_POOL, 'Department Pool'),
+    ]
+    routing_mode = models.CharField(
+        max_length=20,
+        choices=ROUTING_CHOICES,
+        default=ROUTE_MANAGER,
+        help_text=(
+            'Manager Assignment: manager assigns each ticket to a specific agent. '
+            'Department Pool: all department members see new tickets and any one of them can claim and resolve it.'
+        ),
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

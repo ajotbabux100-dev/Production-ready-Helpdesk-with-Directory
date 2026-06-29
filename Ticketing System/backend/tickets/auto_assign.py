@@ -14,6 +14,10 @@ def auto_assign(ticket):
 
     dept = ticket.department
 
+    # Pool mode: ticket stays unassigned so all department members can see and claim it
+    if dept.routing_mode == 'pool':
+        return
+
     def _assign(user):
         ticket.assigned_to = user
         ticket.status = 'assigned'

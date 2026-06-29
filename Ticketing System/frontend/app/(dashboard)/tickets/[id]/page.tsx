@@ -11,7 +11,8 @@ import { Textarea } from '@/app/components/ui/textarea'
 import { formatDate } from '@/app/lib/utils'
 import {
   ArrowLeft, Paperclip, Send, AlertTriangle, Clock, User as UserIcon,
-  Building2, MapPin, Tag, Lock, MessageSquare, CheckCircle2, RefreshCw,
+  Building2, MapPin, Tag, Lock, MessageSquare, CheckCircle2, RefreshCw, UserPlus,
+  TrendingUp, ChevronDown, ChevronUp,
 } from 'lucide-react'
 
 const STATUS_OPTIONS = [
@@ -91,6 +92,9 @@ export default function TicketDetailPage() {
   const [selectedAgent, setSelectedAgent] = useState('')
   const [selectedStatus, setSelectedStatus] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+  const [escalateOpen, setEscalateOpen] = useState(false)
+  const [escalateReason, setEscalateReason] = useState('')
+  const [escalateError, setEscalateError] = useState('')
 
   useEffect(() => {
     fetchTicket()
@@ -143,6 +147,27 @@ export default function TicketDetailPage() {
     try {
       await api.post(`/tickets/${id}/reopen/`)
       fetchTicket()
+    } finally { setActionLoading(false) }
+  }
+
+  const claimTicket = async () => {
+    setActionLoading(true)
+    try {
+      await api.post(`/tickets/${id}/claim/`)
+      fetchTicket()
+    } finally { setActionLoading(false) }
+  }
+
+  const escalateTicket = async () => {
+    setEscalateError('')
+    setActionLoading(true)
+    try {
+      await api.post(`/tickets/${id}/escalate/`, { reason: escalateReason })
+      setEscalateOpen(false)
+      setEscalateReason('')
+      fetchTicket()
+    } catch (err: any) {
+      setEscalateError(err.response?.data?.error || 'Escalation failed. Make sure the department has a manager assigned.')
     } finally { setActionLoading(false) }
   }
 
@@ -439,6 +464,79 @@ export default function TicketDetailPage() {
                   Reassign Ticket
                 </Button>
               </div>
+
+              {/* Escalate to Manager — agents only, not already escalated */}
+              {user?.role === 'agent' && ticket.status !== 'escalated' && (
+                <div className="border-t border-gray-50 pt-4 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => { setEscalateOpen((o) => !o); setEscalateError('') }}
+                    className="w-full flex items-center justify-between text-xs font-medium text-red-600 hover:text-red-700"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <TrendingUp className="w-3.5 h-3.5" /> Escalate to Manager
+                    </span>
+                    {escalateOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+                  {escalateOpen && (
+                    <div className="space-y-2 bg-red-50 border border-red-100 rounded-xl p-3">
+                      <p className="text-xs text-red-700">
+                        This will assign the ticket to the department manager and set status to <strong>Escalated</strong>.
+                      </p>
+                      <Textarea
+                        placeholder="Reason for escalation (optional)..."
+                        value={escalateReason}
+                        onChange={(e) => setEscalateReason(e.target.value)}
+                        rows={3}
+                        className="text-sm"
+                      />
+                      {escalateError && (
+                        <p className="text-xs text-red-600">{escalateError}</p>
+                      )}
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1"
+                          onClick={() => { setEscalateOpen(false); setEscalateReason(''); setEscalateError('') }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="flex-1 bg-red-600 hover:bg-red-700 text-white border-0"
+                          loading={actionLoading}
+                          onClick={escalateTicket}
+                        >
+                          <TrendingUp className="w-3.5 h-3.5 mr-1" /> Escalate
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Pool-mode claim banner — shown when dept is pool-routed, ticket is unassigned, and viewer is an agent */}
+          {isAgent && ticket.department_detail?.routing_mode === 'pool' && !ticket.assigned_to && (
+            <div className="bg-violet-50 border border-violet-200 rounded-2xl p-5 space-y-3">
+              <div className="flex items-start gap-3">
+                <UserPlus className="w-5 h-5 text-violet-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-violet-900">Department Pool Ticket</p>
+                  <p className="text-xs text-violet-700 mt-0.5">
+                    This ticket is open to all department members. Claim it to take ownership and start working on it.
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={claimTicket}
+                loading={actionLoading}
+                className="w-full bg-violet-600 hover:bg-violet-700 text-white border-0"
+              >
+                <UserPlus className="w-4 h-4 mr-1.5" /> Claim This Ticket
+              </Button>
             </div>
           )}
 

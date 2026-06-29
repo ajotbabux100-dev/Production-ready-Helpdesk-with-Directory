@@ -8,7 +8,7 @@ import { Input } from '@/app/components/ui/input'
 import { Select } from '@/app/components/ui/select'
 import { Textarea } from '@/app/components/ui/textarea'
 import { Modal } from '@/app/components/ui/modal'
-import { Building2, Plus, Users, Mail, Edit, PowerOff, Power, UserCheck, Tag } from 'lucide-react'
+import { Building2, Plus, Users, Mail, Edit, PowerOff, Power, UserCheck, Tag, GitBranch } from 'lucide-react'
 
 type DeptForm = {
   name: string
@@ -16,6 +16,12 @@ type DeptForm = {
   email: string
   manager: string
   auto_assign_to: string
+  routing_mode: 'manager' | 'pool'
+}
+
+const ROUTING_MODE_LABELS: Record<string, string> = {
+  manager: 'Manager Assignment',
+  pool: 'Department Pool',
 }
 
 export default function DepartmentsPage() {
@@ -24,7 +30,7 @@ export default function DepartmentsPage() {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Department | null>(null)
-  const [form, setForm] = useState<DeptForm>({ name: '', description: '', email: '', manager: '', auto_assign_to: '' })
+  const [form, setForm] = useState<DeptForm>({ name: '', description: '', email: '', manager: '', auto_assign_to: '', routing_mode: 'manager' })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -38,7 +44,7 @@ export default function DepartmentsPage() {
 
   const openCreate = async () => {
     setEditing(null)
-    setForm({ name: '', description: '', email: '', manager: '', auto_assign_to: '' })
+    setForm({ name: '', description: '', email: '', manager: '', auto_assign_to: '', routing_mode: 'manager' })
     setError('')
     await loadAgents()
     setModalOpen(true)
@@ -52,6 +58,7 @@ export default function DepartmentsPage() {
       email: dept.email,
       manager: dept.manager ? String(dept.manager) : '',
       auto_assign_to: dept.auto_assign_to ? String(dept.auto_assign_to) : '',
+      routing_mode: dept.routing_mode ?? 'manager',
     })
     setError('')
     await loadAgents()
@@ -75,6 +82,7 @@ export default function DepartmentsPage() {
         email: form.email,
         manager: form.manager ? Number(form.manager) : null,
         auto_assign_to: form.auto_assign_to ? Number(form.auto_assign_to) : null,
+        routing_mode: form.routing_mode,
       }
       if (editing) {
         await api.patch(`/departments/${editing.id}/`, payload)
@@ -131,20 +139,22 @@ export default function DepartmentsPage() {
               <h3 className="font-semibold text-gray-900 mb-1">{dept.name}</h3>
               {dept.description && <p className="text-sm text-gray-500 mb-3 line-clamp-2">{dept.description}</p>}
 
-              {(dept.manager_name || dept.auto_assign_to_name) && (
-                <div className="space-y-1 mb-3">
-                  {dept.manager_name && (
-                    <p className="text-xs text-gray-500 flex items-center gap-1">
-                      <Users className="w-3.5 h-3.5" /> Manager: <span className="font-medium text-gray-700">{dept.manager_name}</span>
-                    </p>
-                  )}
-                  {dept.auto_assign_to_name && (
-                    <p className="text-xs text-blue-600 flex items-center gap-1">
-                      <UserCheck className="w-3.5 h-3.5" /> Auto-assign: <span className="font-medium">{dept.auto_assign_to_name}</span>
-                    </p>
-                  )}
-                </div>
-              )}
+              <div className="space-y-1 mb-3">
+                <p className={`text-xs flex items-center gap-1 font-medium ${dept.routing_mode === 'pool' ? 'text-violet-600' : 'text-gray-500'}`}>
+                  <GitBranch className="w-3.5 h-3.5" />
+                  {ROUTING_MODE_LABELS[dept.routing_mode] ?? 'Manager Assignment'}
+                </p>
+                {dept.manager_name && (
+                  <p className="text-xs text-gray-500 flex items-center gap-1">
+                    <Users className="w-3.5 h-3.5" /> Manager: <span className="font-medium text-gray-700">{dept.manager_name}</span>
+                  </p>
+                )}
+                {dept.auto_assign_to_name && dept.routing_mode !== 'pool' && (
+                  <p className="text-xs text-blue-600 flex items-center gap-1">
+                    <UserCheck className="w-3.5 h-3.5" /> Auto-assign: <span className="font-medium">{dept.auto_assign_to_name}</span>
+                  </p>
+                )}
+              </div>
 
               <div className="flex items-center gap-4 text-xs text-gray-500 mt-3 pt-3 border-t border-gray-100">
                 <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> {dept.member_count} members</span>
@@ -226,6 +236,31 @@ export default function DepartmentsPage() {
             />
             <p className="text-xs text-gray-400">New tickets in this department will be assigned to this person automatically.</p>
           </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-gray-700">Ticket Routing Mode</p>
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                { value: 'manager', label: 'Manager Assignment', desc: 'Manager assigns each ticket to a specific agent.' },
+                { value: 'pool', label: 'Department Pool', desc: 'All members see new tickets. Anyone can claim and resolve.' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, routing_mode: opt.value }))}
+                  className={`text-left p-3 rounded-xl border-2 transition-colors ${
+                    form.routing_mode === opt.value
+                      ? 'border-blue-900 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <p className={`text-sm font-semibold ${form.routing_mode === opt.value ? 'text-blue-900' : 'text-gray-800'}`}>{opt.label}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{opt.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="flex gap-3 justify-end pt-2">
             <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
             <Button onClick={handleSave} loading={saving}>

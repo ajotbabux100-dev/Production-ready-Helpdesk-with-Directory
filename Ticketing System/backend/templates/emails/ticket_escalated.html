@@ -1,0 +1,18 @@
+{% extends "emails/base.html" %}
+{% block content %}
+<p>Dear {{ ticket.assigned_to.first_name }},</p>
+<p>A ticket has been <strong style="color:#dc2626;">escalated to you</strong> by {{ escalated_by }} and requires your immediate attention.</p>
+<div class="ticket-box">
+  <p><strong>Ticket Number:</strong> {{ ticket.ticket_number }}</p>
+  <p><strong>Subject:</strong> {{ ticket.title }}</p>
+  <p><strong>Priority:</strong> {{ ticket.get_priority_display }}</p>
+  <p><strong>Requester:</strong> {{ ticket.requester.full_name }}</p>
+  {% if escalation_reason %}
+  <p><strong>Escalation Reason:</strong> {{ escalation_reason }}</p>
+  {% endif %}
+  {% if ticket.sla_resolution_due %}
+  <p><strong>Resolution Due:</strong> {{ ticket.sla_resolution_due|date:"N j, Y g:i A" }}</p>
+  {% endif %}
+</div>
+<a href="{{ frontend_url }}/tickets/{{ ticket.id }}" class="btn" style="background:#dc2626;">View Escalated Ticket</a>
+{% endblock %}

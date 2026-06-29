@@ -6,6 +6,7 @@ from .email import (
     notify_ticket_created, notify_ticket_assigned,
     notify_status_updated, notify_comment_added,
     notify_ticket_resolved, notify_sla_breach,
+    notify_ticket_escalated,
 )
 from .models import Notification
 

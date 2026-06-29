@@ -87,12 +87,13 @@ export default function UsersPage() {
       if (form.password) payload.password = form.password
 
       if (editing) {
-        await api.patch(`/auth/users/${editing.id}/`, payload)
+        const res = await api.patch(`/auth/users/${editing.id}/`, payload)
+        setUsers((prev) => prev.map((u) => (u.id === editing.id ? { ...u, ...res.data } : u)))
       } else {
         await api.post('/auth/users/', payload)
+        await fetchAll()
       }
       setModalOpen(false)
-      fetchAll()
     } catch (err: any) {
       const data = err.response?.data
       if (data) setErrors(Object.fromEntries(Object.entries(data).map(([k, v]) => [k, Array.isArray(v) ? v[0] : String(v)])))
@@ -102,8 +103,8 @@ export default function UsersPage() {
   }
 
   const toggleActive = async (user: User) => {
-    await api.patch(`/auth/users/${user.id}/`, { is_active: !user.is_active })
-    fetchAll()
+    const res = await api.patch(`/auth/users/${user.id}/`, { is_active: !user.is_active })
+    setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, ...res.data } : u)))
   }
 
   return (

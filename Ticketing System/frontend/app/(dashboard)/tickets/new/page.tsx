@@ -166,7 +166,21 @@ export default function NewTicketPage() {
                 options={categories.map((c) => ({ value: c.slug, label: c.name }))}
                 placeholder="Select category..."
                 value={form.category}
-                onChange={(e) => handleChange('category', e.target.value)}
+                onChange={(e) => {
+                  const slug = e.target.value
+                  handleChange('category', slug)
+                  if (slug) {
+                    const cat = categories.find((c) => c.slug === slug)
+                    if (cat && cat.department_ids?.length === 1) {
+                      const deptId = String(cat.department_ids[0])
+                      if (form.department !== deptId) {
+                        handleChange('department', deptId)
+                        const dept = departments.find((d) => String(d.id) === deptId) || null
+                        setSelectedDept(dept)
+                      }
+                    }
+                  }
+                }}
                 error={errors.category}
               />
               <Select

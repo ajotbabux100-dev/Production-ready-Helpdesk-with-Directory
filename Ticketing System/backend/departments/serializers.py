@@ -29,6 +29,7 @@ class DepartmentSerializer(serializers.ModelSerializer):
             'id', 'name', 'description', 'email',
             'manager', 'manager_name',
             'auto_assign_to', 'auto_assign_to_name',
+            'routing_mode',
             'is_active', 'member_count', 'sla_policies', 'categories',
             'created_at', 'updated_at',
         ]
@@ -47,4 +48,4 @@ class DepartmentSerializer(serializers.ModelSerializer):
 class DepartmentMinimalSerializer(serializers.ModelSerializer):
     class Meta:
         model = Department
-        fields = ['id', 'name', 'email', 'is_active']
+        fields = ['id', 'name', 'email', 'is_active', 'routing_mode']

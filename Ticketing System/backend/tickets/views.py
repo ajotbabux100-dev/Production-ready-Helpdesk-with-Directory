@@ -20,6 +20,7 @@ from users.permissions import IsAgentOrAbove
 from audit.utils import log_action
 from audit.models import AuditLog
 from notifications.tasks import send_ticket_notification
+from notifications.email import notify_ticket_escalated
 
 
 class TicketViewSet(viewsets.ModelViewSet):
@@ -86,6 +87,76 @@ class TicketViewSet(viewsets.ModelViewSet):
         action_type = AuditLog.TICKET_REASSIGNED if old_assignee else AuditLog.TICKET_ASSIGNED
         log_action(request.user, action_type,
                    description=f'Ticket {ticket.ticket_number} assigned',
+                   ticket=ticket, request=request)
+        send_ticket_notification.delay('ticket_assigned', ticket.id)
+        return Response(TicketDetailSerializer(ticket).data)
+
+    @action(detail=True, methods=['post'])
+    def escalate(self, request, pk=None):
+        """Agent escalates a ticket to the department manager."""
+        ticket = self.get_object()
+
+        # Only agents (not managers/admins) escalate upward
+        if not request.user.is_agent_or_above:
+            return Response({'error': 'Permission denied.'}, status=403)
+        if request.user.is_manager_or_above:
+            return Response({'error': 'Managers and admins can handle this directly without escalating.'}, status=400)
+        if ticket.status == Ticket.ESCALATED:
+            return Response({'error': 'Ticket is already escalated.'}, status=400)
+
+        # Determine the escalation target: department manager first, else any admin
+        manager = None
+        if ticket.department_id and ticket.department.manager_id:
+            manager = ticket.department.manager
+        if not manager:
+            from users.models import User
+            manager = User.objects.filter(role__in=('manager', 'admin'), is_active=True).first()
+        if not manager:
+            return Response({'error': 'No manager found to escalate to. Please configure a department manager.'}, status=400)
+
+        reason = request.data.get('reason', '').strip()
+        escalated_by_name = request.user.full_name
+
+        ticket.assigned_to = manager
+        ticket.status = Ticket.ESCALATED
+        ticket.save(update_fields=['assigned_to', 'status'])
+
+        # Save escalation reason as an internal comment
+        if reason:
+            from tickets.models import Comment
+            Comment.objects.create(
+                ticket=ticket,
+                author=request.user,
+                body=f'Escalation reason: {reason}',
+                is_internal=True,
+            )
+
+        log_action(request.user, AuditLog.STATUS_CHANGED,
+                   description=f'Ticket {ticket.ticket_number} escalated to {manager.full_name} by {escalated_by_name}',
+                   old_value=Ticket.ASSIGNED, new_value=Ticket.ESCALATED,
+                   ticket=ticket, request=request)
+
+        # Notify the manager directly (needs extra context not in the generic dispatcher)
+        try:
+            notify_ticket_escalated(ticket, escalated_by=escalated_by_name, reason=reason)
+        except Exception as e:
+            print(f'Escalation email error: {e}')
+
+        return Response(TicketDetailSerializer(ticket).data)
+
+    @action(detail=True, methods=['post'])
+    def claim(self, request, pk=None):
+        """Pool-mode: an agent self-assigns an unassigned ticket from the department queue."""
+        ticket = self.get_object()
+        if not request.user.is_agent_or_above:
+            return Response({'error': 'Only agents can claim tickets.'}, status=403)
+        if ticket.assigned_to_id:
+            return Response({'error': 'This ticket is already assigned to someone.'}, status=400)
+        ticket.assigned_to = request.user
+        ticket.status = Ticket.IN_PROGRESS
+        ticket.save(update_fields=['assigned_to', 'status'])
+        log_action(request.user, AuditLog.TICKET_ASSIGNED,
+                   description=f'Ticket {ticket.ticket_number} claimed by {request.user.full_name}',
                    ticket=ticket, request=request)
         send_ticket_notification.delay('ticket_assigned', ticket.id)
         return Response(TicketDetailSerializer(ticket).data)
