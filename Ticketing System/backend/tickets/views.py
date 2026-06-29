@@ -93,14 +93,17 @@ class TicketViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def reopen(self, request, pk=None):
         ticket = self.get_object()
-        if ticket.status not in (Ticket.RESOLVED, Ticket.CLOSED):
-            return Response({'error': 'Only resolved or closed tickets can be reopened.'}, status=400)
+        REOPENABLE = (Ticket.RESOLVED, Ticket.CLOSED, Ticket.ASSIGNED)
+        if ticket.status not in REOPENABLE:
+            return Response({'error': 'Ticket cannot be reopened from its current status.'}, status=400)
 
         old_status = ticket.status
-        ticket.status = Ticket.REOPENED
+        # Assigned → back to New; Resolved/Closed → Reopened
+        ticket.status = Ticket.NEW if old_status == Ticket.ASSIGNED else Ticket.REOPENED
+        ticket.assigned_to = None if old_status == Ticket.ASSIGNED else ticket.assigned_to
         ticket.resolved_at = None
         ticket.closed_at = None
-        ticket.save(update_fields=['status', 'resolved_at', 'closed_at'])
+        ticket.save(update_fields=['status', 'assigned_to', 'resolved_at', 'closed_at'])
 
         log_action(request.user, AuditLog.STATUS_CHANGED,
                    description=f'Ticket {ticket.ticket_number} reopened',

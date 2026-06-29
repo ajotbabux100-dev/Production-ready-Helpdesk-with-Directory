@@ -442,17 +442,23 @@ export default function TicketDetailPage() {
             </div>
           )}
 
-          {/* Reopen button — shown to everyone when ticket is resolved or closed */}
-          {(ticket.status === 'resolved' || ticket.status === 'closed') && (
+          {/* Reopen / Unassign — shown when ticket is assigned, resolved, or closed */}
+          {(ticket.status === 'resolved' || ticket.status === 'closed' || ticket.status === 'assigned') && (
             <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-3">
               <div className="flex items-start gap-3">
                 <RefreshCw className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="text-sm font-semibold text-amber-900">
-                    {ticket.status === 'resolved' ? 'Issue not resolved?' : 'Need to reopen?'}
+                    {ticket.status === 'assigned'
+                      ? 'Wrong assignment?'
+                      : ticket.status === 'resolved'
+                      ? 'Issue not resolved?'
+                      : 'Need to reopen?'}
                   </p>
                   <p className="text-xs text-amber-700 mt-0.5">
-                    Reopening this ticket will set the status back to <strong>Reopened</strong> and notify the team.
+                    {ticket.status === 'assigned'
+                      ? 'This will unassign the ticket and set it back to New so it can be re-routed.'
+                      : 'Reopening this ticket will set the status to Reopened and notify the team.'}
                   </p>
                 </div>
               </div>
@@ -461,7 +467,8 @@ export default function TicketDetailPage() {
                 loading={actionLoading}
                 className="w-full bg-amber-600 hover:bg-amber-700 text-white border-0"
               >
-                <RefreshCw className="w-4 h-4 mr-1.5" /> Reopen Ticket
+                <RefreshCw className="w-4 h-4 mr-1.5" />
+                {ticket.status === 'assigned' ? 'Unassign & Reset to New' : 'Reopen Ticket'}
               </Button>
             </div>
           )}
