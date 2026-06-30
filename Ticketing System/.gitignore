@@ -42,3 +42,10 @@ desktop.ini
 *.key
 backend/.env
 frontend/.env.local
+
+# SQLite WAL/SHM sidecar files
+*.sqlite3-shm
+*.sqlite3-wal
+
+# Runtime logs
+backend/logs/

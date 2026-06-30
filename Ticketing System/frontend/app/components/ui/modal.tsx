@@ -2,6 +2,7 @@
 import { useEffect } from 'react'
 import { cn } from '@/app/lib/utils'
 import { X } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 
 interface ModalProps {
   open: boolean
@@ -25,24 +26,48 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
     return () => document.removeEventListener('keydown', handler)
   }, [onClose])
 
-  if (!open) return null
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className={cn('relative w-full bg-white rounded-xl shadow-xl', sizes[size])}>
-        {title && (
-          <div className="flex items-center justify-between border-b px-6 py-4">
-            <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
-            <button onClick={onClose} className="rounded-md p-1 hover:bg-gray-100">
-              <X className="h-5 w-5 text-gray-500" />
-            </button>
-          </div>
-        )}
-        <div className="max-h-[80vh] overflow-y-auto">
-          {children}
+    <AnimatePresence>
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <motion.div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            onClick={onClose}
+          />
+
+          {/* Panel */}
+          <motion.div
+            className={cn('relative w-full bg-white rounded-2xl shadow-2xl overflow-hidden', sizes[size])}
+            initial={{ opacity: 0, y: 24, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 16, scale: 0.97 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 28 }}
+          >
+            {title && (
+              <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+                <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+                <motion.button
+                  whileHover={{ scale: 1.1, rotate: 90 }}
+                  whileTap={{ scale: 0.9 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+                  onClick={onClose}
+                  className="rounded-lg p-1.5 hover:bg-gray-100 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-4 w-4" />
+                </motion.button>
+              </div>
+            )}
+            <div className="max-h-[80vh] overflow-y-auto">
+              {children}
+            </div>
+          </motion.div>
         </div>
-      </div>
-    </div>
+      )}
+    </AnimatePresence>
   )
 }

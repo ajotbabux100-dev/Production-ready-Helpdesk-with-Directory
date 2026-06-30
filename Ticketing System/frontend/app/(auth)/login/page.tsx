@@ -16,6 +16,9 @@ const HIGHLIGHTS = [
 export default function LoginPage() {
   const router = useRouter()
   const setAuth = useAuthStore((s) => s.setAuth)
+  const user = useAuthStore((s) => s.user)
+  const accessToken = useAuthStore((s) => s.accessToken)
+  const hasHydrated = useAuthStore((s) => s._hasHydrated)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPwd, setShowPwd] = useState(false)
@@ -26,6 +29,11 @@ export default function LoginPage() {
   useEffect(() => {
     api.get('/branding/').then((r) => setBranding(r.data)).catch(() => {})
   }, [])
+
+  // Already logged in with a valid token — skip the login page
+  useEffect(() => {
+    if (hasHydrated && user && accessToken) router.replace('/dashboard')
+  }, [hasHydrated, user, accessToken, router])
 
   const bg = branding?.primary_color || '#1e3a5f'
 

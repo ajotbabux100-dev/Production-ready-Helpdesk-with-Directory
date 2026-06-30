@@ -8,8 +8,16 @@ import { Input } from '@/app/components/ui/input'
 import { Select } from '@/app/components/ui/select'
 import { Modal } from '@/app/components/ui/modal'
 import { Badge } from '@/app/components/ui/badge'
-import { Plus, Edit, UserX, UserCheck, Trash2, AlertTriangle } from 'lucide-react'
-import { formatDateShort } from '@/app/lib/utils'
+import { Plus, Edit, UserX, UserCheck, Trash2, AlertTriangle, History, LogIn, LogOut } from 'lucide-react'
+import { formatDateShort, formatDate } from '@/app/lib/utils'
+
+interface LoginLog {
+  id: number
+  action: string
+  action_display: string
+  ip_address: string | null
+  timestamp: string
+}
 
 const ROLES = [
   { value: 'end_user', label: 'End User' },
@@ -38,6 +46,12 @@ export default function UsersPage() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [search, setSearch] = useState('')
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
+
+  // Login history modal
+  const [historyUser, setHistoryUser] = useState<User | null>(null)
+  const [historyLogs, setHistoryLogs] = useState<LoginLog[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   const fetchAll = async () => {
     const [usersRes, deptsRes] = await Promise.all([
@@ -112,6 +126,24 @@ export default function UsersPage() {
     await api.delete(`/auth/users/${id}/`)
     setUsers((prev) => prev.filter((u) => u.id !== id))
     setDeleteConfirmId(null)
+  }
+
+  const openHistory = async (user: User) => {
+    setHistoryUser(user)
+    setHistoryOpen(true)
+    setHistoryLoading(true)
+    try {
+      const res = await api.get(`/audit/?user=${user.id}&action=login&ordering=-timestamp&page_size=50`)
+      const loginLogs = res.data.results ?? res.data
+      const res2 = await api.get(`/audit/?user=${user.id}&action=logout&ordering=-timestamp&page_size=50`)
+      const logoutLogs = res2.data.results ?? res2.data
+      const combined = [...loginLogs, ...logoutLogs].sort(
+        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      )
+      setHistoryLogs(combined)
+    } finally {
+      setHistoryLoading(false)
+    }
   }
 
   return (
@@ -192,6 +224,9 @@ export default function UsersPage() {
                   <td className="px-4 py-3 text-gray-500">{formatDateShort(user.date_joined)}</td>
                   <td className="px-4 py-3">
                     <div className="flex gap-1">
+                      <button onClick={() => openHistory(user)} className="p-1.5 rounded hover:bg-blue-50 text-gray-400 hover:text-blue-700" title="Login History">
+                        <History className="w-4 h-4" />
+                      </button>
                       <button onClick={() => openEdit(user)} className="p-1.5 rounded hover:bg-gray-100 text-gray-500" title="Edit">
                         <Edit className="w-4 h-4" />
                       </button>
@@ -210,6 +245,54 @@ export default function UsersPage() {
           </table>
         </div>
       </Card>
+
+      {/* ── Login History Modal ── */}
+      <Modal open={historyOpen} onClose={() => setHistoryOpen(false)} title={`Login History — ${historyUser?.full_name ?? ''}`} size="lg">
+        <div className="p-6">
+          {historyLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-900" />
+            </div>
+          ) : historyLogs.length === 0 ? (
+            <div className="text-center py-12 text-gray-400">
+              <History className="w-8 h-8 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No login history found for this user.</p>
+            </div>
+          ) : (
+            <div className="border border-gray-200 rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Event</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Date & Time</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">IP Address</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {historyLogs.map((log) => (
+                    <tr key={log.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                          log.action === 'login'
+                            ? 'bg-green-50 text-green-700 border border-green-200'
+                            : 'bg-gray-100 text-gray-600 border border-gray-200'
+                        }`}>
+                          {log.action === 'login'
+                            ? <LogIn className="w-3 h-3" />
+                            : <LogOut className="w-3 h-3" />}
+                          {log.action_display}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 text-xs">{formatDate(log.timestamp)}</td>
+                      <td className="px-4 py-3 text-gray-400 text-xs font-mono">{log.ip_address ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </Modal>
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit User' : 'Add User'} size="lg">
         <div className="p-6 space-y-4">

@@ -30,7 +30,7 @@ export default function AuditPage() {
   const fetchLogs = async () => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({ page: String(page) })
+      const params = new URLSearchParams({ page: String(page), exclude_actions: 'login,logout' })
       if (search) params.set('search', search)
       const res = await api.get(`/audit/?${params}`)
       setLogs(res.data.results ?? res.data)

@@ -1,14 +1,18 @@
 'use client'
 import { useEffect, useState } from 'react'
 import api from '@/app/lib/api'
-import { Department, User } from '@/app/lib/types'
+import { Department, User, SLAPolicy } from '@/app/lib/types'
+import { useAuthStore } from '@/app/lib/store'
 import { Card, CardContent } from '@/app/components/ui/card'
 import { Button } from '@/app/components/ui/button'
 import { Input } from '@/app/components/ui/input'
 import { Select } from '@/app/components/ui/select'
 import { Textarea } from '@/app/components/ui/textarea'
 import { Modal } from '@/app/components/ui/modal'
-import { Building2, Plus, Users, Mail, Edit, PowerOff, Power, UserCheck, Tag, GitBranch, AtSign, Trash2, AlertTriangle } from 'lucide-react'
+import {
+  Building2, Plus, Users, Mail, Edit, PowerOff, Power,
+  UserCheck, Tag, GitBranch, AtSign, Trash2, AlertTriangle, ShieldCheck,
+} from 'lucide-react'
 
 type DeptForm = {
   name: string
@@ -25,7 +29,35 @@ const ROUTING_MODE_LABELS: Record<string, string> = {
   pool: 'Department Pool',
 }
 
+const PRIORITIES = [
+  { key: 'critical' as const, label: 'Critical', color: 'text-red-600 bg-red-50 border-red-200' },
+  { key: 'high'     as const, label: 'High',     color: 'text-orange-600 bg-orange-50 border-orange-200' },
+  { key: 'medium'   as const, label: 'Medium',   color: 'text-yellow-600 bg-yellow-50 border-yellow-200' },
+  { key: 'low'      as const, label: 'Low',      color: 'text-green-600 bg-green-50 border-green-200' },
+]
+type Priority = 'critical' | 'high' | 'medium' | 'low'
+type SLARow = { id: number | null; response: string; resolution: string }
+
+function emptyRows(): Record<Priority, SLARow> {
+  return {
+    critical: { id: null, response: '', resolution: '' },
+    high:     { id: null, response: '', resolution: '' },
+    medium:   { id: null, response: '', resolution: '' },
+    low:      { id: null, response: '', resolution: '' },
+  }
+}
+
+function fmtMin(val: string) {
+  const n = Number(val)
+  if (!val || isNaN(n) || n <= 0) return ''
+  if (n < 60) return `${n}m`
+  const h = Math.floor(n / 60), m = n % 60
+  return m > 0 ? `${h}h ${m}m` : `${h}h`
+}
+
 export default function DepartmentsPage() {
+  const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
+
   const [departments, setDepartments] = useState<Department[]>([])
   const [agents, setAgents] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
@@ -35,6 +67,14 @@ export default function DepartmentsPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
+
+  // SLA modal
+  const [slaOpen, setSlaOpen] = useState(false)
+  const [slaDept, setSlaDept] = useState<Department | null>(null)
+  const [slaRows, setSlaRows] = useState<Record<Priority, SLARow>>(emptyRows())
+  const [slaSaving, setSlaSaving] = useState(false)
+  const [slaError, setSlaError] = useState('')
+  const [slaSaved, setSlaSaved] = useState(false)
 
   const fetchDepts = async () => {
     const res = await api.get('/departments/')
@@ -113,6 +153,58 @@ export default function DepartmentsPage() {
     setDeleteConfirmId(null)
   }
 
+  const openSla = (dept: Department) => {
+    setSlaDept(dept)
+    const rows = emptyRows()
+    dept.sla_policies.forEach((p) => {
+      rows[p.priority as Priority] = {
+        id: p.id,
+        response: String(p.response_time_minutes),
+        resolution: String(p.resolution_time_minutes),
+      }
+    })
+    setSlaRows(rows)
+    setSlaError('')
+    setSlaSaved(false)
+    setSlaOpen(true)
+  }
+
+  const handleSlaSave = async () => {
+    if (!slaDept) return
+    setSlaSaving(true)
+    setSlaError('')
+    setSlaSaved(false)
+    try {
+      for (const { key } of PRIORITIES) {
+        const row = slaRows[key]
+        const filled = row.response.trim() !== '' && row.resolution.trim() !== ''
+        if (filled) {
+          const payload = {
+            department: slaDept.id,
+            priority: key,
+            response_time_minutes: Number(row.response),
+            resolution_time_minutes: Number(row.resolution),
+          }
+          if (row.id) {
+            await api.patch(`/departments/sla-policies/${row.id}/`, payload)
+          } else {
+            const res = await api.post('/departments/sla-policies/', payload)
+            setSlaRows((r) => ({ ...r, [key]: { ...r[key], id: res.data.id } }))
+          }
+        } else if (!filled && row.id) {
+          await api.delete(`/departments/sla-policies/${row.id}/`)
+          setSlaRows((r) => ({ ...r, [key]: { ...r[key], id: null } }))
+        }
+      }
+      setSlaSaved(true)
+      fetchDepts()
+    } catch {
+      setSlaError('Failed to save. Please check all values are valid numbers.')
+    } finally {
+      setSlaSaving(false)
+    }
+  }
+
   if (loading) {
     return <div className="flex items-center justify-center h-64"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-900" /></div>
   }
@@ -133,7 +225,6 @@ export default function DepartmentsPage() {
         {departments.map((dept) => (
           <Card key={dept.id} className={!dept.is_active ? 'opacity-60' : ''}>
             <CardContent className="p-5">
-              {/* Delete confirmation overlay */}
               {deleteConfirmId === dept.id && (
                 <div className="mb-3 bg-red-50 border border-red-200 rounded-xl p-3 space-y-2">
                   <div className="flex items-start gap-2">
@@ -143,18 +234,8 @@ export default function DepartmentsPage() {
                     </p>
                   </div>
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => deleteDept(dept.id)}
-                      className="flex-1 py-1.5 text-xs font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700"
-                    >
-                      Yes, Delete
-                    </button>
-                    <button
-                      onClick={() => setDeleteConfirmId(null)}
-                      className="flex-1 py-1.5 text-xs font-semibold border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50"
-                    >
-                      Cancel
-                    </button>
+                    <button onClick={() => deleteDept(dept.id)} className="flex-1 py-1.5 text-xs font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700">Yes, Delete</button>
+                    <button onClick={() => setDeleteConfirmId(null)} className="flex-1 py-1.5 text-xs font-semibold border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50">Cancel</button>
                   </div>
                 </div>
               )}
@@ -164,6 +245,11 @@ export default function DepartmentsPage() {
                   <Building2 className="w-5 h-5 text-blue-900" />
                 </div>
                 <div className="flex gap-1">
+                  {isAdmin && (
+                    <button onClick={() => openSla(dept)} className="p-1.5 rounded-md hover:bg-blue-50 text-gray-400 hover:text-blue-700" title="Manage SLA Policies">
+                      <ShieldCheck className="w-4 h-4" />
+                    </button>
+                  )}
                   <button onClick={() => openEdit(dept)} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500" title="Edit">
                     <Edit className="w-4 h-4" />
                   </button>
@@ -175,6 +261,7 @@ export default function DepartmentsPage() {
                   </button>
                 </div>
               </div>
+
               <h3 className="font-semibold text-gray-900 mb-1">{dept.name}</h3>
               {dept.description && <p className="text-sm text-gray-500 mb-3 line-clamp-2">{dept.description}</p>}
 
@@ -203,6 +290,7 @@ export default function DepartmentsPage() {
                 <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" /> {dept.member_count} members</span>
                 {dept.email && <span className="flex items-center gap-1 truncate"><Mail className="w-3.5 h-3.5 flex-shrink-0" /> {dept.email}</span>}
               </div>
+
               {dept.sla_policies.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-gray-100">
                   <p className="text-xs font-medium text-gray-500 mb-2">SLA Policies</p>
@@ -215,6 +303,7 @@ export default function DepartmentsPage() {
                   </div>
                 </div>
               )}
+
               {dept.categories && dept.categories.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-gray-100">
                   <p className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1">
@@ -222,61 +311,106 @@ export default function DepartmentsPage() {
                   </p>
                   <div className="flex flex-wrap gap-1">
                     {dept.categories.map((cat) => (
-                      <span
-                        key={cat.id}
-                        className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white"
-                        style={{ backgroundColor: cat.color }}
-                      >
+                      <span key={cat.id} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium text-white" style={{ backgroundColor: cat.color }}>
                         {cat.name}
                       </span>
                     ))}
                   </div>
                 </div>
               )}
-              {!dept.is_active && (
-                <div className="mt-2 text-xs text-gray-400 font-medium">Inactive</div>
-              )}
+
+              {!dept.is_active && <div className="mt-2 text-xs text-gray-400 font-medium">Inactive</div>}
             </CardContent>
           </Card>
         ))}
       </div>
 
+      {/* ── SLA Modal ── */}
+      <Modal open={slaOpen} onClose={() => setSlaOpen(false)} title={`SLA Policies — ${slaDept?.name ?? ''}`} size="lg">
+        <div className="p-6 space-y-4">
+          <p className="text-sm text-gray-500">
+            Set response and resolution time targets per priority. Enter times in <strong>minutes</strong> (e.g. 60 = 1 hour, 480 = 8 hours). Leave both fields blank to remove a priority.
+          </p>
+
+          {slaError && (
+            <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{slaError}</div>
+          )}
+
+          <div className="border border-gray-200 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide w-28">Priority</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Response (min)</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Resolution (min)</th>
+                  <th className="w-8" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {PRIORITIES.map(({ key, label, color }) => (
+                  <tr key={key} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${color}`}>{label}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number" min={1} placeholder="e.g. 60"
+                          value={slaRows[key].response}
+                          onChange={(e) => setSlaRows((r) => ({ ...r, [key]: { ...r[key], response: e.target.value } }))}
+                          className="w-28 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-900"
+                        />
+                        {slaRows[key].response && (
+                          <span className="text-xs text-gray-400 whitespace-nowrap">{fmtMin(slaRows[key].response)}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number" min={1} placeholder="e.g. 480"
+                          value={slaRows[key].resolution}
+                          onChange={(e) => setSlaRows((r) => ({ ...r, [key]: { ...r[key], resolution: e.target.value } }))}
+                          className="w-28 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-900"
+                        />
+                        {slaRows[key].resolution && (
+                          <span className="text-xs text-gray-400 whitespace-nowrap">{fmtMin(slaRows[key].resolution)}</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-2 py-3 text-center">
+                      {(slaRows[key].response || slaRows[key].resolution) && (
+                        <button
+                          onClick={() => setSlaRows((r) => ({ ...r, [key]: { ...r[key], response: '', resolution: '' } }))}
+                          className="text-gray-300 hover:text-red-400 font-bold text-sm"
+                          title="Clear"
+                        >✕</button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-1">
+            {slaSaved && <span className="text-sm text-green-600 font-medium">Saved successfully</span>}
+            <Button variant="outline" onClick={() => setSlaOpen(false)}>Close</Button>
+            <Button onClick={handleSlaSave} loading={slaSaving}>Save SLA Policies</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Department Modal ── */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit Department' : 'Add Department'}>
         <div className="p-6 space-y-4">
           {error && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{error}</div>}
-          <Input
-            label="Department Name *"
-            value={form.name}
-            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-          />
-          <Textarea
-            label="Description"
-            value={form.description}
-            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-            rows={3}
-          />
-          <Input
-            label="Department Email"
-            type="email"
-            placeholder="dept@example.com"
-            value={form.email}
-            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-          />
-          <Select
-            label="Manager"
-            options={agentOptions}
-            placeholder="Select manager..."
-            value={form.manager}
-            onChange={(e) => setForm((f) => ({ ...f, manager: e.target.value }))}
-          />
+          <Input label="Department Name *" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+          <Textarea label="Description" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} rows={3} />
+          <Input label="Department Email" type="email" placeholder="dept@example.com" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+          <Select label="Manager" options={agentOptions} placeholder="Select manager..." value={form.manager} onChange={(e) => setForm((f) => ({ ...f, manager: e.target.value }))} />
           <div className="space-y-1">
-            <Select
-              label="Auto-Assign Tickets To"
-              options={agentOptions}
-              placeholder="None (use manager or round-robin)..."
-              value={form.auto_assign_to}
-              onChange={(e) => setForm((f) => ({ ...f, auto_assign_to: e.target.value }))}
-            />
+            <Select label="Auto-Assign Tickets To" options={agentOptions} placeholder="None (use manager or round-robin)..." value={form.auto_assign_to} onChange={(e) => setForm((f) => ({ ...f, auto_assign_to: e.target.value }))} />
             <p className="text-xs text-gray-400">New tickets in this department will be assigned to this person automatically.</p>
           </div>
 
@@ -287,16 +421,8 @@ export default function DepartmentsPage() {
                 { value: 'manager', label: 'Manager Assignment', desc: 'Manager assigns each ticket to a specific agent.' },
                 { value: 'pool', label: 'Department Pool', desc: 'All members see new tickets. Anyone can claim and resolve.' },
               ] as const).map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setForm((f) => ({ ...f, routing_mode: opt.value }))}
-                  className={`text-left p-3 rounded-xl border-2 transition-colors ${
-                    form.routing_mode === opt.value
-                      ? 'border-blue-900 bg-blue-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
+                <button key={opt.value} type="button" onClick={() => setForm((f) => ({ ...f, routing_mode: opt.value }))}
+                  className={`text-left p-3 rounded-xl border-2 transition-colors ${form.routing_mode === opt.value ? 'border-blue-900 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
                   <p className={`text-sm font-semibold ${form.routing_mode === opt.value ? 'text-blue-900' : 'text-gray-800'}`}>{opt.label}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{opt.desc}</p>
                 </button>
@@ -311,16 +437,8 @@ export default function DepartmentsPage() {
                 { value: 'all', label: 'All Users', desc: 'Anyone in the system can be @mentioned in ticket comments.' },
                 { value: 'department', label: 'Department Only', desc: 'Only members of this department appear in the @mention picker.' },
               ] as const).map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setForm((f) => ({ ...f, mention_scope: opt.value }))}
-                  className={`text-left p-3 rounded-xl border-2 transition-colors ${
-                    form.mention_scope === opt.value
-                      ? 'border-blue-900 bg-blue-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
+                <button key={opt.value} type="button" onClick={() => setForm((f) => ({ ...f, mention_scope: opt.value }))}
+                  className={`text-left p-3 rounded-xl border-2 transition-colors ${form.mention_scope === opt.value ? 'border-blue-900 bg-blue-50' : 'border-gray-200 hover:border-gray-300'}`}>
                   <p className={`text-sm font-semibold ${form.mention_scope === opt.value ? 'text-blue-900' : 'text-gray-800'}`}>{opt.label}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{opt.desc}</p>
                 </button>
@@ -330,9 +448,7 @@ export default function DepartmentsPage() {
 
           <div className="flex gap-3 justify-end pt-2">
             <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSave} loading={saving}>
-              {editing ? 'Save Changes' : 'Create Department'}
-            </Button>
+            <Button onClick={handleSave} loading={saving}>{editing ? 'Save Changes' : 'Create Department'}</Button>
           </div>
         </div>
       </Modal>

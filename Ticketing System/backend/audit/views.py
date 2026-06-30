@@ -8,10 +8,16 @@ from users.permissions import IsManagerOrAbove
 
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = AuditLog.objects.select_related('user', 'ticket').all()
     serializer_class = AuditLogSerializer
     permission_classes = [IsManagerOrAbove]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['action', 'user', 'ticket']
     search_fields = ['description', 'user__email']
     ordering_fields = ['timestamp']
+
+    def get_queryset(self):
+        qs = AuditLog.objects.select_related('user', 'ticket').all()
+        exclude = self.request.query_params.get('exclude_actions')
+        if exclude:
+            qs = qs.exclude(action__in=[a.strip() for a in exclude.split(',')])
+        return qs

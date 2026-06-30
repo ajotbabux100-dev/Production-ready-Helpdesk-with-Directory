@@ -13,10 +13,25 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// Ensure only one token refresh is in flight at a time. If a second 401
-// arrives while a refresh is already running, it waits for the same promise
-// instead of firing a second refresh (which would use the already-rotated
-// refresh token and cause an erroneous logout).
+// Wipe ALL auth state (Zustand store + raw localStorage keys) and redirect to login.
+// Calling the Zustand store directly avoids the partial-clear bug where
+// auth-storage still holds stale user data after tokens are removed.
+function forceLogout() {
+  try {
+    // Dynamically access the store singleton without a React hook
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useAuthStore } = require('./store')
+    useAuthStore.getState().clearAuth()
+  } catch {
+    // Fallback if the store isn't available yet
+    localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
+    localStorage.removeItem('auth-storage')
+  }
+  window.location.href = '/login'
+}
+
+// Ensure only one token refresh is in flight at a time.
 let refreshPromise: Promise<string> | null = null
 
 api.interceptors.response.use(
@@ -27,7 +42,7 @@ api.interceptors.response.use(
       original._retry = true
       const refresh = localStorage.getItem('refresh_token')
       if (!refresh) {
-        window.location.href = '/login'
+        forceLogout()
         return Promise.reject(error)
       }
 
@@ -54,9 +69,7 @@ api.interceptors.response.use(
         original.headers.Authorization = `Bearer ${newAccess}`
         return api(original)
       } catch {
-        localStorage.removeItem('access_token')
-        localStorage.removeItem('refresh_token')
-        window.location.href = '/login'
+        forceLogout()
       }
     }
     return Promise.reject(error)

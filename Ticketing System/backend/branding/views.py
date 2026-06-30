@@ -2,8 +2,12 @@ from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from django.core.cache import cache
 from .models import SystemSettings
 from .serializers import SystemSettingsSerializer
+
+BRANDING_CACHE_KEY = 'branding:settings'
+BRANDING_CACHE_TTL = 300  # 5 minutes
 
 
 class SystemSettingsView(APIView):
@@ -19,8 +23,13 @@ class SystemSettingsView(APIView):
         return [IsAuthenticated()]
 
     def get(self, request):
+        cached = cache.get(BRANDING_CACHE_KEY)
+        if cached:
+            return Response(cached)
         s = SystemSettings.get()
-        return Response(SystemSettingsSerializer(s, context={'request': request}).data)
+        data = SystemSettingsSerializer(s, context={'request': request}).data
+        cache.set(BRANDING_CACHE_KEY, data, BRANDING_CACHE_TTL)
+        return Response(data)
 
     def patch(self, request):
         if not request.user.is_authenticated or not request.user.is_admin:
@@ -38,6 +47,7 @@ class SystemSettingsView(APIView):
         serializer = SystemSettingsSerializer(s, data=data, partial=True, context={'request': request})
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        cache.delete(BRANDING_CACHE_KEY)  # bust cache on save
         return Response(SystemSettingsSerializer(s, context={'request': request}).data)
 
 
