@@ -123,6 +123,11 @@ export function Sidebar() {
         })}
       </nav>
 
+      {/* ── Version ── */}
+      <div className="px-5 pb-2">
+        <p className="text-[10px] text-white/25 font-mono">v{process.env.NEXT_PUBLIC_VERSION || '1.0.0'}</p>
+      </div>
+
       {/* ── User profile ── */}
       {user && (
         <div
