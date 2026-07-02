@@ -1,3 +1,24 @@
+export interface Role {
+  id: number
+  name: string
+  is_super: boolean
+  permissions: string[]
+  user_count: number
+  created_at: string
+}
+
+export interface PermissionCatalogAction {
+  key: string
+  action: string
+  label: string
+}
+
+export interface PermissionCatalogModule {
+  module: string
+  module_label: string
+  actions: PermissionCatalogAction[]
+}
+
 export interface User {
   id: number
   email: string
@@ -5,7 +26,10 @@ export interface User {
   last_name: string
   full_name: string
   phone: string
-  role: 'end_user' | 'agent' | 'manager' | 'admin'
+  role: number
+  role_detail: Role
+  assignable_roles: number[]
+  assignable_roles_detail: Role[]
   department: number | null
   department_name: string | null
   avatar: string | null
@@ -13,9 +37,17 @@ export interface User {
   is_deleted?: boolean
   deleted_alias?: string
   date_joined: string
-  is_agent_or_above?: boolean
-  is_manager_or_above?: boolean
-  is_admin?: boolean
+}
+
+export interface VaultEntry {
+  id: number
+  title: string
+  username: string
+  url: string
+  comment: string
+  has_password: boolean
+  created_at: string
+  updated_at: string
 }
 
 export interface Department {
@@ -71,6 +103,8 @@ export interface SystemSettings {
   portal_name: string
   portal_welcome: string
   support_hours: string
+  login_headline: string
+  login_highlights: { icon: string; text: string }[]
   // Appearance
   primary_color: string
   favicon: string | null
@@ -183,7 +217,7 @@ export interface Comment {
 
 export interface Attachment {
   id: number
-  file: string
+  download_url: string
   filename: string
   file_size: number
   content_type: string
@@ -201,6 +235,55 @@ export interface Notification {
   message: string
   is_read: boolean
   created_at: string
+}
+
+export interface DirectoryField {
+  id: number
+  tab: number
+  name: string
+  order: number
+  created_at: string
+}
+
+export interface DirectoryTab {
+  id: number
+  name: string
+  order: number
+  custom_fields: DirectoryField[]
+  entry_count: number
+  created_at: string
+}
+
+export interface StaffDirectoryEntry {
+  id: number
+  tab: number | null
+  tab_name: string | null
+  values: Record<string, string>
+  created_at: string
+  updated_at: string
+}
+
+export interface PortalCategory {
+  id: number
+  name: string
+  order: number
+  allowed_roles: number[]
+  allowed_role_names: string[]
+  portal_count: number
+  created_at: string
+}
+
+export interface Portal {
+  id: number
+  name: string
+  url: string
+  category: number | null
+  category_name: string | null
+  favicon_url: string | null
+  created_by: number | null
+  created_by_name: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface PaginatedResponse<T> {

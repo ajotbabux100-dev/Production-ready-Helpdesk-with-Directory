@@ -20,6 +20,10 @@ class AuditLog(models.Model):
     DEPARTMENT_UPDATED = 'department_updated'
     LOGIN = 'login'
     LOGOUT = 'logout'
+    VAULT_REVEALED = 'vault_revealed'
+    PASSWORD_RESET_REQUESTED = 'password_reset_requested'
+    PASSWORD_RESET_COMPLETED = 'password_reset_completed'
+    ROLE_SWITCHED = 'role_switched'
 
     ACTION_CHOICES = [
         (TICKET_CREATED, 'Ticket Created'),
@@ -40,6 +44,10 @@ class AuditLog(models.Model):
         (DEPARTMENT_UPDATED, 'Department Updated'),
         (LOGIN, 'User Login'),
         (LOGOUT, 'User Logout'),
+        (VAULT_REVEALED, 'Vault Password Revealed'),
+        (PASSWORD_RESET_REQUESTED, 'Password Reset Requested'),
+        (PASSWORD_RESET_COMPLETED, 'Password Reset Completed'),
+        (ROLE_SWITCHED, 'Active Role Switched'),
     ]
 
     user = models.ForeignKey(

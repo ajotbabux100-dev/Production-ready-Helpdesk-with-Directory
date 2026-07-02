@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useAuthStore } from '@/app/lib/store'
+import { useAuthStore, useHasPerm } from '@/app/lib/store'
 import api from '@/app/lib/api'
 import { DashboardSummary, Ticket, STATUS_COLORS, PRIORITY_COLORS } from '@/app/lib/types'
 import { Badge } from '@/app/components/ui/badge'
@@ -58,13 +58,13 @@ const PRIORITY_BAR: Record<string, string> = {
 
 export default function DashboardPage() {
   const user = useAuthStore((s) => s.user)
+  const isAgent = useHasPerm('tickets', 'claim')
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [myTickets, setMyTickets] = useState<Ticket[]>([])
   const [recentTickets, setRecentTickets] = useState<Ticket[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const isAgent = user?.role !== 'end_user'
     const requests = [
       api.get('/reports/dashboard/'),
       api.get('/tickets/?ordering=-created_at&page_size=8'),
@@ -77,7 +77,7 @@ export default function DashboardPage() {
       setRecentTickets(ticketsRes.data.results || ticketsRes.data)
       if (myRes) setMyTickets(myRes.data.results || myRes.data)
     }).catch(console.error).finally(() => setLoading(false))
-  }, [user])
+  }, [user, isAgent])
 
   if (loading) {
     return (
@@ -87,7 +87,6 @@ export default function DashboardPage() {
     )
   }
 
-  const isAgent = user?.role !== 'end_user'
   const s = summary
 
   // Pie chart data for ticket status distribution
@@ -99,12 +98,12 @@ export default function DashboardPage() {
   ].filter(d => d.value > 0) : []
 
   return (
-    <div className="max-w-7xl mx-auto space-y-5">
+    <div className="space-y-5">
       {/* ── Header ── */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{greeting(user?.first_name || 'there')}</h1>
-          <p className="text-gray-400 text-sm mt-0.5">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{greeting(user?.first_name || 'there')}</h1>
+          <p className="text-gray-400 text-xs sm:text-sm mt-0.5">
             {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </p>
         </div>
@@ -122,97 +121,111 @@ export default function DashboardPage() {
         {isAgent ? (
           <>
             {/* Total */}
-            <motion.div
-              custom={0} variants={fadeUp} initial="hidden" animate="show"
-              whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
-              className="col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 cursor-default"
-            >
-              <div className="w-12 h-12 rounded-xl bg-blue-900 flex items-center justify-center flex-shrink-0">
-                <TicketIcon className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-3xl font-bold text-gray-900">{s?.total ?? 0}</p>
-                <p className="text-sm text-gray-500">Total Tickets</p>
-              </div>
-            </motion.div>
+            <Link href="/tickets" className="col-span-12 sm:col-span-6 lg:col-span-3">
+              <motion.div
+                custom={0} variants={fadeUp} initial="hidden" animate="show"
+                whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 cursor-pointer h-full"
+              >
+                <div className="w-12 h-12 rounded-xl bg-blue-900 flex items-center justify-center flex-shrink-0">
+                  <TicketIcon className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <p className="text-3xl font-bold text-gray-900">{s?.total ?? 0}</p>
+                  <p className="text-sm text-gray-500">Total Tickets</p>
+                </div>
+              </motion.div>
+            </Link>
 
             {/* Open */}
-            <motion.div
-              custom={1} variants={fadeUp} initial="hidden" animate="show"
-              whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
-              className="col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 cursor-default"
-            >
-              <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
-                <Inbox className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-3xl font-bold text-gray-900">{s?.open ?? 0}</p>
-                <p className="text-sm text-gray-500">Open</p>
-              </div>
-            </motion.div>
+            <Link href="/tickets?status__in=assigned,in_progress,escalated" className="col-span-12 sm:col-span-6 lg:col-span-3">
+              <motion.div
+                custom={1} variants={fadeUp} initial="hidden" animate="show"
+                whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 cursor-pointer h-full"
+              >
+                <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
+                  <Inbox className="w-6 h-6 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-3xl font-bold text-gray-900">{s?.open ?? 0}</p>
+                  <p className="text-sm text-gray-500">Open</p>
+                </div>
+              </motion.div>
+            </Link>
 
             {/* Pending */}
-            <motion.div
-              custom={2} variants={fadeUp} initial="hidden" animate="show"
-              whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
-              className="col-span-12 sm:col-span-6 lg:col-span-3 bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 cursor-default"
-            >
-              <div className="w-12 h-12 rounded-xl bg-yellow-50 flex items-center justify-center flex-shrink-0">
-                <Clock className="w-6 h-6 text-yellow-600" />
-              </div>
-              <div>
-                <p className="text-3xl font-bold text-gray-900">{s?.pending ?? 0}</p>
-                <p className="text-sm text-gray-500">Pending</p>
-              </div>
-            </motion.div>
+            <Link href="/tickets?status__in=pending_user,pending_vendor" className="col-span-12 sm:col-span-6 lg:col-span-3">
+              <motion.div
+                custom={2} variants={fadeUp} initial="hidden" animate="show"
+                whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 cursor-pointer h-full"
+              >
+                <div className="w-12 h-12 rounded-xl bg-yellow-50 flex items-center justify-center flex-shrink-0">
+                  <Clock className="w-6 h-6 text-yellow-600" />
+                </div>
+                <div>
+                  <p className="text-3xl font-bold text-gray-900">{s?.pending ?? 0}</p>
+                  <p className="text-sm text-gray-500">Pending</p>
+                </div>
+              </motion.div>
+            </Link>
 
             {/* SLA Breached */}
-            <motion.div
-              custom={3} variants={fadeUp} initial="hidden" animate="show"
-              whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
-              className={`col-span-12 sm:col-span-6 lg:col-span-3 rounded-2xl border shadow-sm p-5 flex items-center gap-4 cursor-default ${(s?.sla_breached ?? 0) > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'}`}
-            >
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${(s?.sla_breached ?? 0) > 0 ? 'bg-red-100' : 'bg-gray-50'}`}>
-                <AlertCircle className={`w-6 h-6 ${(s?.sla_breached ?? 0) > 0 ? 'text-red-600' : 'text-gray-400'}`} />
-              </div>
-              <div>
-                <p className={`text-3xl font-bold ${(s?.sla_breached ?? 0) > 0 ? 'text-red-700' : 'text-gray-900'}`}>{s?.sla_breached ?? 0}</p>
-                <p className={`text-sm ${(s?.sla_breached ?? 0) > 0 ? 'text-red-600' : 'text-gray-500'}`}>SLA Breached</p>
-              </div>
-            </motion.div>
+            <Link href="/tickets?sla_breached=true" className="col-span-12 sm:col-span-6 lg:col-span-3">
+              <motion.div
+                custom={3} variants={fadeUp} initial="hidden" animate="show"
+                whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
+                className={`rounded-2xl border shadow-sm p-5 flex items-center gap-4 cursor-pointer h-full ${(s?.sla_breached ?? 0) > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-100'}`}
+              >
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${(s?.sla_breached ?? 0) > 0 ? 'bg-red-100' : 'bg-gray-50'}`}>
+                  <AlertCircle className={`w-6 h-6 ${(s?.sla_breached ?? 0) > 0 ? 'text-red-600' : 'text-gray-400'}`} />
+                </div>
+                <div>
+                  <p className={`text-3xl font-bold ${(s?.sla_breached ?? 0) > 0 ? 'text-red-700' : 'text-gray-900'}`}>{s?.sla_breached ?? 0}</p>
+                  <p className={`text-sm ${(s?.sla_breached ?? 0) > 0 ? 'text-red-600' : 'text-gray-500'}`}>SLA Breached</p>
+                </div>
+              </motion.div>
+            </Link>
           </>
         ) : (
           <>
-            <motion.div custom={0} variants={fadeUp} initial="hidden" animate="show" whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
-              className="col-span-12 sm:col-span-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 cursor-default">
-              <div className="w-12 h-12 rounded-xl bg-blue-900 flex items-center justify-center flex-shrink-0">
-                <TicketIcon className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <p className="text-3xl font-bold text-gray-900">{s?.total ?? 0}</p>
-                <p className="text-sm text-gray-500">Total Submitted</p>
-              </div>
-            </motion.div>
-            <motion.div custom={1} variants={fadeUp} initial="hidden" animate="show" whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
-              className="col-span-12 sm:col-span-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 cursor-default">
-              <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
-                <Inbox className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-3xl font-bold text-gray-900">{s?.open ?? 0}</p>
-                <p className="text-sm text-gray-500">Open</p>
-              </div>
-            </motion.div>
-            <motion.div custom={2} variants={fadeUp} initial="hidden" animate="show" whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
-              className="col-span-12 sm:col-span-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 cursor-default">
-              <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center flex-shrink-0">
-                <CheckCircle2 className="w-6 h-6 text-green-600" />
-              </div>
-              <div>
-                <p className="text-3xl font-bold text-gray-900">{s?.resolved ?? 0}</p>
-                <p className="text-sm text-gray-500">Resolved</p>
-              </div>
-            </motion.div>
+            <Link href="/tickets" className="col-span-12 sm:col-span-4">
+              <motion.div custom={0} variants={fadeUp} initial="hidden" animate="show" whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 cursor-pointer h-full">
+                <div className="w-12 h-12 rounded-xl bg-blue-900 flex items-center justify-center flex-shrink-0">
+                  <TicketIcon className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <p className="text-3xl font-bold text-gray-900">{s?.total ?? 0}</p>
+                  <p className="text-sm text-gray-500">Total Submitted</p>
+                </div>
+              </motion.div>
+            </Link>
+            <Link href="/tickets?status__in=assigned,in_progress,escalated" className="col-span-12 sm:col-span-4">
+              <motion.div custom={1} variants={fadeUp} initial="hidden" animate="show" whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 cursor-pointer h-full">
+                <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
+                  <Inbox className="w-6 h-6 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-3xl font-bold text-gray-900">{s?.open ?? 0}</p>
+                  <p className="text-sm text-gray-500">Open</p>
+                </div>
+              </motion.div>
+            </Link>
+            <Link href="/tickets?status=resolved" className="col-span-12 sm:col-span-4">
+              <motion.div custom={2} variants={fadeUp} initial="hidden" animate="show" whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 cursor-pointer h-full">
+                <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center flex-shrink-0">
+                  <CheckCircle2 className="w-6 h-6 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-3xl font-bold text-gray-900">{s?.resolved ?? 0}</p>
+                  <p className="text-sm text-gray-500">Resolved</p>
+                </div>
+              </motion.div>
+            </Link>
           </>
         )}
 
@@ -269,32 +282,40 @@ export default function DashboardPage() {
             className="col-span-12 lg:col-span-5 grid grid-cols-2 gap-4 content-start">
 
             {/* Assigned to me */}
-            <div className="col-span-1 bg-gradient-to-br from-blue-900 to-blue-700 rounded-2xl p-5 text-white">
-              <ClipboardCheck className="w-5 h-5 mb-3 opacity-70" />
-              <p className="text-3xl font-bold">{s?.assigned_to_me ?? 0}</p>
-              <p className="text-sm text-blue-200 mt-1">Assigned to me</p>
-            </div>
+            <Link href="/tickets?assigned_to_me=true" className="col-span-1">
+              <div className="bg-gradient-to-br from-blue-900 to-blue-700 rounded-2xl p-5 text-white hover:shadow-lg transition-shadow cursor-pointer h-full">
+                <ClipboardCheck className="w-5 h-5 mb-3 opacity-70" />
+                <p className="text-3xl font-bold">{s?.assigned_to_me ?? 0}</p>
+                <p className="text-sm text-blue-200 mt-1">Assigned to me</p>
+              </div>
+            </Link>
 
             {/* New unread */}
-            <div className="col-span-1 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-              <Circle className="w-5 h-5 mb-3 text-indigo-400" />
-              <p className="text-3xl font-bold text-gray-900">{s?.new ?? 0}</p>
-              <p className="text-sm text-gray-500 mt-1">New unread</p>
-            </div>
+            <Link href="/tickets?status=new" className="col-span-1">
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition-shadow cursor-pointer h-full">
+                <Circle className="w-5 h-5 mb-3 text-indigo-400" />
+                <p className="text-3xl font-bold text-gray-900">{s?.new ?? 0}</p>
+                <p className="text-sm text-gray-500 mt-1">New unread</p>
+              </div>
+            </Link>
 
             {/* Resolved */}
-            <div className="col-span-1 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-              <CheckCircle2 className="w-5 h-5 mb-3 text-green-500" />
-              <p className="text-3xl font-bold text-gray-900">{s?.resolved ?? 0}</p>
-              <p className="text-sm text-gray-500 mt-1">Resolved</p>
-            </div>
+            <Link href="/tickets?status=resolved" className="col-span-1">
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition-shadow cursor-pointer h-full">
+                <CheckCircle2 className="w-5 h-5 mb-3 text-green-500" />
+                <p className="text-3xl font-bold text-gray-900">{s?.resolved ?? 0}</p>
+                <p className="text-sm text-gray-500 mt-1">Resolved</p>
+              </div>
+            </Link>
 
             {/* Closed */}
-            <div className="col-span-1 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-              <TrendingUp className="w-5 h-5 mb-3 text-gray-400" />
-              <p className="text-3xl font-bold text-gray-900">{s?.closed ?? 0}</p>
-              <p className="text-sm text-gray-500 mt-1">Closed</p>
-            </div>
+            <Link href="/tickets?status=closed" className="col-span-1">
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition-shadow cursor-pointer h-full">
+                <TrendingUp className="w-5 h-5 mb-3 text-gray-400" />
+                <p className="text-3xl font-bold text-gray-900">{s?.closed ?? 0}</p>
+                <p className="text-sm text-gray-500 mt-1">Closed</p>
+              </div>
+            </Link>
 
             {/* Status breakdown chart */}
             {pieData.length > 0 && (

@@ -128,7 +128,7 @@ export default function NewTicketPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-4">
+    <div className="space-y-4">
       <div className="flex items-center gap-3">
         <Link href="/tickets">
           <button className="p-2 rounded-lg hover:bg-gray-100 text-gray-500">

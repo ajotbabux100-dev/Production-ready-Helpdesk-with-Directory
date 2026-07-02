@@ -23,7 +23,8 @@ def auto_assign(ticket):
         ticket.status = 'assigned'
 
     def _eligible(user):
-        return user and user.is_active and user.role in ('agent', 'manager', 'admin')
+        # agent/manager/admin-equivalent: anyone who can claim tickets, or is_super
+        return user and user.is_active and (user.is_admin or user.has_perm_key('tickets', 'claim'))
 
     # 1. Explicitly configured auto-assignee
     if _eligible(dept.auto_assign_to):
@@ -35,11 +36,16 @@ def auto_assign(ticket):
         _assign(dept.manager)
         return
 
-    # 3. Least-busy agent/manager in the department
+    # 3. Least-busy agent/manager in the department (admins excluded from
+    # load-balancing, same as before - they're only used via 1/2 above).
     from users.models import User
+    candidate_ids = [
+        u.id for u in User.objects.filter(department=dept, is_active=True).select_related('role')
+        if not u.is_admin and u.has_perm_key('tickets', 'claim')
+    ]
     agents = (
         User.objects
-        .filter(department=dept, is_active=True, role__in=('agent', 'manager'))
+        .filter(id__in=candidate_ids)
         .annotate(open_count=Count(
             'assigned_tickets',
             filter=Q(assigned_tickets__status__in=('new', 'assigned', 'in_progress', 'escalated'))

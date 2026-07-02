@@ -40,10 +40,22 @@ class TicketFormConfigSerializer(serializers.ModelSerializer):
 
 
 class AttachmentSerializer(serializers.ModelSerializer):
+    # Deliberately not exposing the raw `file` field - its value is a direct
+    # /media/ path, which is not publicly served (see config/urls.py) since
+    # attachments can be confidential. `download_url` routes through the
+    # permission-checked AttachmentDownloadView instead.
+    download_url = serializers.SerializerMethodField()
+
     class Meta:
         model = Attachment
-        fields = ['id', 'file', 'filename', 'file_size', 'content_type', 'uploaded_at', 'uploaded_by']
+        fields = ['id', 'download_url', 'filename', 'file_size', 'content_type', 'uploaded_at', 'uploaded_by']
         read_only_fields = ['uploaded_by', 'uploaded_at']
+
+    def get_download_url(self, obj):
+        # Relative to the frontend's API base (which already includes /api),
+        # not an absolute URL - kept consistent with how other endpoints are
+        # referenced from the frontend (see app/lib/api.ts's baseURL).
+        return f'/tickets/attachments/{obj.id}/download/'
 
 
 class CommentAttachmentSerializer(serializers.ModelSerializer):

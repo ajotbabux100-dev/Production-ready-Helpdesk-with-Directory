@@ -13,6 +13,17 @@ interface AuthState {
   setUser: (user: User) => void
 }
 
+/** Checks "module.action" against the current user's role. Super roles
+ * (the old "admin" bypass) implicitly pass every check. */
+export function useHasPerm(module: string, action: string): boolean {
+  return useAuthStore((s) => {
+    const role = s.user?.role_detail
+    if (!role) return false
+    if (role.is_super) return true
+    return role.permissions.includes(`${module}.${action}`)
+  })
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({

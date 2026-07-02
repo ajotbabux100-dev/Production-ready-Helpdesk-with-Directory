@@ -1,5 +1,9 @@
+import logging
+
 from django.core.mail import EmailMultiAlternatives, get_connection
 from django.template.loader import render_to_string
+
+logger = logging.getLogger(__name__)
 
 
 def _get_smtp_connection():
@@ -25,7 +29,7 @@ def _get_smtp_connection():
 def send_ticket_email(subject, recipient_email, template_name, context):
     conn, s = _get_smtp_connection()
     if conn is None:
-        print('Email not sent: SMTP is disabled or not fully configured.')
+        logger.info('Email not sent to %s: SMTP is disabled or not fully configured.', recipient_email)
         return False
 
     from_email = f'{s.email_sender_name} <{s.email_sender_address or s.email_host_user}>'
@@ -54,8 +58,8 @@ def send_ticket_email(subject, recipient_email, template_name, context):
             msg.attach_alternative(html_message, 'text/html')
         msg.send()
         return True
-    except Exception as e:
-        print(f'Email error: {e}')
+    except Exception:
+        logger.exception('Email error sending to %s', recipient_email)
         return False
 
 
@@ -81,8 +85,8 @@ def _push(recipient, ticket, notification_type, title, message):
             title=title,
             message=message,
         )
-    except Exception as e:
-        print(f'In-app notification error: {e}')
+    except Exception:
+        logger.exception('In-app notification error for recipient %s', recipient)
 
 
 def notify_ticket_created(ticket):

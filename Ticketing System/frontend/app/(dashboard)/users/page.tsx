@@ -1,14 +1,16 @@
 'use client'
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import api from '@/app/lib/api'
-import { User, Department } from '@/app/lib/types'
+import { User, Department, Role } from '@/app/lib/types'
 import { Card, CardContent } from '@/app/components/ui/card'
 import { Button } from '@/app/components/ui/button'
 import { Input } from '@/app/components/ui/input'
 import { Select } from '@/app/components/ui/select'
 import { Modal } from '@/app/components/ui/modal'
 import { Badge } from '@/app/components/ui/badge'
-import { Plus, Edit, UserX, UserCheck, Trash2, AlertTriangle, History, LogIn, LogOut } from 'lucide-react'
+import { useHasPerm } from '@/app/lib/store'
+import { Plus, Edit, UserX, UserCheck, Trash2, AlertTriangle, History, LogIn, LogOut, Upload } from 'lucide-react'
 import { formatDateShort, formatDate } from '@/app/lib/utils'
 
 interface LoginLog {
@@ -19,25 +21,13 @@ interface LoginLog {
   timestamp: string
 }
 
-const ROLES = [
-  { value: 'end_user', label: 'End User' },
-  { value: 'agent', label: 'Agent' },
-  { value: 'manager', label: 'Manager' },
-  { value: 'admin', label: 'Administrator' },
-]
-
-const ROLE_COLORS: Record<string, string> = {
-  end_user: 'bg-gray-100 text-gray-700 border-gray-200',
-  agent: 'bg-blue-100 text-blue-700 border-blue-200',
-  manager: 'bg-purple-100 text-purple-700 border-purple-200',
-  admin: 'bg-red-100 text-red-700 border-red-200',
-}
-
-const emptyForm = { first_name: '', last_name: '', email: '', phone: '', role: 'end_user', department: '', password: '' }
+const emptyForm = { first_name: '', last_name: '', email: '', phone: '', role: '', department: '', password: '', assignable_roles: [] as number[] }
 
 export default function UsersPage() {
+  const canAdd = useHasPerm('users', 'add')
   const [users, setUsers] = useState<User[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
+  const [roles, setRoles] = useState<Role[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<User | null>(null)
@@ -54,12 +44,14 @@ export default function UsersPage() {
   const [historyOpen, setHistoryOpen] = useState(false)
 
   const fetchAll = async () => {
-    const [usersRes, deptsRes] = await Promise.all([
+    const [usersRes, deptsRes, rolesRes] = await Promise.all([
       api.get(`/auth/users/${search ? `?search=${search}` : ''}`),
       api.get('/departments/?is_active=true'),
+      api.get('/auth/roles/'),
     ])
     setUsers(usersRes.data.results ?? usersRes.data)
     setDepartments(deptsRes.data.results ?? deptsRes.data)
+    setRoles(rolesRes.data.results ?? rolesRes.data)
     setLoading(false)
   }
 
@@ -67,7 +59,7 @@ export default function UsersPage() {
 
   const openCreate = () => {
     setEditing(null)
-    setForm({ ...emptyForm })
+    setForm({ ...emptyForm, role: roles[0] ? String(roles[0].id) : '' })
     setErrors({})
     setModalOpen(true)
   }
@@ -76,11 +68,21 @@ export default function UsersPage() {
     setEditing(user)
     setForm({
       first_name: user.first_name, last_name: user.last_name,
-      email: user.email, phone: user.phone, role: user.role,
+      email: user.email, phone: user.phone, role: String(user.role),
       department: String(user.department ?? ''), password: '',
+      assignable_roles: user.assignable_roles ?? [],
     })
     setErrors({})
     setModalOpen(true)
+  }
+
+  const toggleAssignableRole = (roleId: number) => {
+    setForm((f) => ({
+      ...f,
+      assignable_roles: f.assignable_roles.includes(roleId)
+        ? f.assignable_roles.filter((id) => id !== roleId)
+        : [...f.assignable_roles, roleId],
+    }))
   }
 
   const handleSave = async () => {
@@ -96,8 +98,9 @@ export default function UsersPage() {
     try {
       const payload: Record<string, any> = {
         first_name: form.first_name, last_name: form.last_name,
-        email: form.email, phone: form.phone, role: form.role,
+        email: form.email, phone: form.phone, role: Number(form.role),
         department: form.department ? Number(form.department) : null,
+        assignable_roles: form.assignable_roles.filter((id) => id !== Number(form.role)),
       }
       if (form.password) payload.password = form.password
 
@@ -147,13 +150,20 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4">
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Users</h1>
           <p className="text-sm text-gray-500">{users.length} users</p>
         </div>
-        <Button onClick={openCreate}><Plus className="w-4 h-4 mr-1.5" /> Add User</Button>
+        <div className="flex items-center gap-2">
+          {canAdd && (
+            <Link href="/settings?tab=masters">
+              <Button variant="outline"><Upload className="w-4 h-4 mr-1.5" /> Master Upload</Button>
+            </Link>
+          )}
+          <Button onClick={openCreate}><Plus className="w-4 h-4 mr-1.5" /> Add User</Button>
+        </div>
       </div>
 
       <div className="max-w-sm">
@@ -213,7 +223,14 @@ export default function UsersPage() {
                   </td>
                   <td className="px-4 py-3 text-gray-600">{user.email}</td>
                   <td className="px-4 py-3">
-                    <Badge className={ROLE_COLORS[user.role]}>{user.role.replace('_', ' ')}</Badge>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Badge className="bg-gray-100 text-gray-700 border-gray-200 capitalize">{user.role_detail?.name.replace('_', ' ')}</Badge>
+                      {user.assignable_roles_detail?.length > 0 && (
+                        <span className="text-xs text-gray-400" title={user.assignable_roles_detail.map((r) => r.name).join(', ')}>
+                          +{user.assignable_roles_detail.length}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-gray-600">{user.department_name ?? '—'}</td>
                   <td className="px-4 py-3">
@@ -303,7 +320,12 @@ export default function UsersPage() {
           <Input label="Email *" type="email" value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} error={errors.email} />
           <Input label="Phone" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
           <div className="grid grid-cols-2 gap-4">
-            <Select label="Role" options={ROLES} value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))} />
+            <Select
+              label="Role"
+              options={roles.map((r) => ({ value: r.id, label: r.name.replace('_', ' ') }))}
+              value={form.role}
+              onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+            />
             <Select
               label="Department *"
               options={departments.map((d) => ({ value: d.id, label: d.name }))}
@@ -320,6 +342,28 @@ export default function UsersPage() {
             onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
             error={errors.password}
           />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Additional Roles (switchable)</label>
+            <p className="text-xs text-gray-400 mb-2">
+              The user can switch between "Role" above and any of these from their profile — useful for staff who wear more than one hat.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {roles.filter((r) => String(r.id) !== form.role).map((r) => (
+                <button
+                  type="button"
+                  key={r.id}
+                  onClick={() => toggleAssignableRole(r.id)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors capitalize ${
+                    form.assignable_roles.includes(r.id)
+                      ? 'bg-blue-900 text-white border-blue-900'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  {r.name.replace('_', ' ')}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex gap-3 justify-end pt-2">
             <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
             <Button onClick={handleSave} loading={saving}>{editing ? 'Save Changes' : 'Create User'}</Button>

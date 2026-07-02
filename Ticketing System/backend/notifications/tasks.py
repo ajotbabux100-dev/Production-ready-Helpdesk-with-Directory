@@ -2,6 +2,8 @@
 Notification tasks — runs synchronously (no Celery required).
 Replace with Celery @shared_task if async processing is needed later.
 """
+import logging
+
 from .email import (
     notify_ticket_created, notify_ticket_assigned,
     notify_status_updated, notify_comment_added,
@@ -9,6 +11,8 @@ from .email import (
     notify_ticket_escalated,
 )
 from .models import Notification
+
+logger = logging.getLogger(__name__)
 
 
 class _FakeTask:
@@ -19,8 +23,8 @@ class _FakeTask:
     def delay(self, *args, **kwargs):
         try:
             self._fn(*args, **kwargs)
-        except Exception as e:
-            print(f'Notification error: {e}')
+        except Exception:
+            logger.exception('Notification error for %s', args)
 
 
 def _send_notification(event_type, ticket_id):

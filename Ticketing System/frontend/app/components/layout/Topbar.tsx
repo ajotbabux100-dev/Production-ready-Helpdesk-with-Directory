@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Bell, LogOut, User, ChevronDown, Search } from 'lucide-react'
+import { Bell, LogOut, User, ChevronDown, Search, Menu } from 'lucide-react'
 import { useAuthStore } from '@/app/lib/store'
 import api from '@/app/lib/api'
 
@@ -9,15 +9,20 @@ const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Dashboard',
   '/tickets': 'Tickets',
   '/tickets/new': 'New Ticket',
-  '/departments': 'Departments',
   '/users': 'Users',
   '/reports': 'Reports',
   '/audit': 'Audit Log',
   '/settings': 'Settings',
   '/notifications': 'Notifications',
+  '/profile': 'My Profile',
+  '/vault': 'Password Vault',
 }
 
-export function Topbar() {
+interface TopbarProps {
+  onMenuClick?: () => void
+}
+
+export function Topbar({ onMenuClick }: TopbarProps) {
   const router = useRouter()
   const pathname = usePathname()
   const { user, clearAuth, refreshToken } = useAuthStore()
@@ -43,9 +48,17 @@ export function Topbar() {
     (pathname.startsWith('/tickets/') ? 'Ticket Detail' : '')
 
   return (
-    <header className="fixed top-0 left-64 right-0 z-30 h-14 bg-white/80 backdrop-blur-sm border-b border-gray-100 flex items-center px-6 gap-4">
+    <header className="fixed top-0 left-0 lg:left-64 right-0 z-30 h-14 bg-white/80 backdrop-blur-sm border-b border-gray-100 flex items-center px-4 sm:px-6 gap-3 sm:gap-4">
+      {/* Mobile menu toggle */}
+      <button
+        onClick={onMenuClick}
+        className="lg:hidden -ml-1 p-2 rounded-xl hover:bg-gray-100 text-gray-500"
+      >
+        <Menu className="w-5 h-5" />
+      </button>
+
       {/* Page title */}
-      <p className="text-sm font-semibold text-gray-700 flex-1">{title}</p>
+      <p className="text-sm font-semibold text-gray-700 flex-1 truncate">{title}</p>
 
       {/* Bell */}
       <button
@@ -71,7 +84,7 @@ export function Topbar() {
           </div>
           <div className="hidden sm:block text-left">
             <p className="text-sm font-semibold text-gray-800 leading-tight">{user?.full_name}</p>
-            <p className="text-xs text-gray-400 capitalize leading-tight">{user?.role?.replace('_', ' ')}</p>
+            <p className="text-xs text-gray-400 capitalize leading-tight">{user?.role_detail?.name.replace('_', ' ')}</p>
           </div>
           <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
         </button>

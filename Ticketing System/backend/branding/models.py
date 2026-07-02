@@ -1,6 +1,23 @@
 from django.db import models
 from django.db import transaction
 
+# Fixed icon palette for login_highlights - keys map to lucide-react
+# components on the frontend (see ICON_MAP in the login page).
+LOGIN_HIGHLIGHT_ICONS = [
+    'zap', 'clock', 'shield', 'check', 'users', 'mail',
+    'bell', 'lock', 'star', 'globe', 'settings', 'heart',
+    'trending-up', 'database', 'headset', 'sparkles',
+]
+
+
+def default_login_highlights():
+    return [
+        {'icon': 'zap', 'text': 'Auto-assign tickets to the right team instantly'},
+        {'icon': 'clock', 'text': 'SLA tracking with real-time breach alerts'},
+        {'icon': 'shield', 'text': 'Full audit trail and role-based access'},
+        {'icon': 'check', 'text': 'Email notifications at every step'},
+    ]
+
 
 class SystemSettings(models.Model):
     # ---------- Organisation ----------
@@ -21,6 +38,15 @@ class SystemSettings(models.Model):
     support_hours = models.CharField(
         max_length=200, blank=True,
         default='Sunday - Thursday, 8 AM - 5 PM',
+    )
+    login_headline = models.CharField(
+        max_length=200, blank=True,
+        default='Resolve faster.\nWork smarter.',
+        help_text='Login page hero headline. Use a newline for a two-line heading.',
+    )
+    login_highlights = models.JSONField(
+        default=default_login_highlights, blank=True,
+        help_text='List of {icon, text} bullet points shown on the login page.',
     )
 
     # ---------- Appearance ----------

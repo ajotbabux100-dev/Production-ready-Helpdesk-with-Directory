@@ -32,8 +32,8 @@ class SystemSettingsView(APIView):
         return Response(data)
 
     def patch(self, request):
-        if not request.user.is_authenticated or not request.user.is_admin:
-            return Response({'error': 'Admin access required.'}, status=403)
+        if not request.user.is_authenticated or not request.user.has_perm_key('settings', 'edit'):
+            return Response({'error': 'You do not have permission to edit settings.'}, status=403)
         s = SystemSettings.get()
         data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
         if data.get('company_logo') == 'null':
@@ -56,8 +56,8 @@ class TestEmailView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        if not request.user.is_admin:
-            return Response({'error': 'Admin access required.'}, status=403)
+        if not request.user.has_perm_key('settings', 'edit'):
+            return Response({'error': 'You do not have permission to edit settings.'}, status=403)
 
         recipient = request.data.get('recipient') or request.user.email
         if not recipient:

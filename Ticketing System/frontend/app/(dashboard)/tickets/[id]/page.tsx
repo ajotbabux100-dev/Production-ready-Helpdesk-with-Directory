@@ -2,8 +2,9 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { useAuthStore } from '@/app/lib/store'
+import { useAuthStore, useHasPerm } from '@/app/lib/store'
 import api from '@/app/lib/api'
+import { downloadFile } from '@/app/lib/download'
 import { Ticket, User, STATUS_COLORS, PRIORITY_COLORS, MentionUser } from '@/app/lib/types'
 import { Badge } from '@/app/components/ui/badge'
 import { Button } from '@/app/components/ui/button'
@@ -12,7 +13,7 @@ import { formatDate } from '@/app/lib/utils'
 import {
   ArrowLeft, Paperclip, Send, AlertTriangle, Clock, User as UserIcon,
   Building2, MapPin, Tag, Lock, MessageSquare, CheckCircle2, RefreshCw, UserPlus,
-  TrendingUp, ChevronDown, ChevronUp, AtSign, X, Users, LogOut,
+  TrendingUp, ChevronDown, ChevronUp, AtSign, X, Users, LogOut, Printer,
 } from 'lucide-react'
 
 const STATUS_OPTIONS = [
@@ -93,6 +94,9 @@ export default function TicketDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const user = useAuthStore((s) => s.user)
+  const isStaff = useHasPerm('tickets', 'claim')
+  const canEscalate = useHasPerm('tickets', 'escalate')
+  const canManageEscalated = useHasPerm('tickets', 'manage_escalated')
   const [ticket, setTicket] = useState<Ticket | null>(null)
   const [loading, setLoading] = useState(true)
   const [comment, setComment] = useState('')
@@ -117,9 +121,10 @@ export default function TicketDetailPage() {
 
   useEffect(() => {
     fetchTicket()
-    if (user && user.role !== 'end_user') {
+    if (user && isStaff) {
       api.get('/auth/users/agents/').then((r) => setAgents(r.data)).catch(() => {})
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
   const fetchTicket = async () => {
@@ -198,9 +203,11 @@ export default function TicketDetailPage() {
     setCommentLoading(true)
     try {
       await api.post(`/tickets/${id}/add_comment/`, { body: comment, is_internal: isInternal })
-      // Invite any @mentioned users who aren't already participants
-      const existingParticipantIds = ticket?.participants?.map((p) => p.user) ?? []
-      const toInvite = pendingMentions.filter((m) => !existingParticipantIds.includes(m.id))
+      // Invite any @mentioned users who aren't already ACTIVE participants -
+      // someone who exited or already contributed should be re-invited (and
+      // re-notified), not silently skipped.
+      const activeParticipantIds = (ticket?.participants ?? []).filter((p) => p.status === 'active').map((p) => p.user)
+      const toInvite = pendingMentions.filter((m) => !activeParticipantIds.includes(m.id))
       await Promise.allSettled(toInvite.map((m) => api.post(`/tickets/${id}/invite/`, { user_id: m.id })))
       setComment('')
       setPendingMentions([])
@@ -281,8 +288,7 @@ export default function TicketDetailPage() {
   }
   if (!ticket) return null
 
-  const isAgent = user?.role !== 'end_user'
-  const visibleComments = ticket.comments.filter((c) => !c.is_internal || isAgent)
+  const visibleComments = ticket.comments.filter((c) => !c.is_internal || isStaff)
   const activeParticipants = (ticket.participants ?? []).filter((p) => p.status !== 'exited')
   const myParticipation = (ticket.participants ?? []).find((p) => p.user === user?.id && p.status !== 'exited')
 
@@ -300,10 +306,10 @@ export default function TicketDetailPage() {
   const hasMentionResults = filteredDeptUsers.length > 0 || filteredOtherUsers.length > 0
 
   return (
-    <div className="max-w-6xl mx-auto space-y-4">
+    <div className="space-y-4">
       {/* Top bar */}
       <div className="flex items-start gap-3">
-        <Link href="/tickets">
+        <Link href="/tickets" className="print:hidden">
           <button className="p-2 mt-1 rounded-xl hover:bg-gray-100 text-gray-400 transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -327,6 +333,9 @@ export default function TicketDetailPage() {
           </div>
           <h1 className="text-xl font-bold text-gray-900 leading-snug">{ticket.title}</h1>
         </div>
+        <Button variant="outline" className="print:hidden mt-1" onClick={() => window.print()}>
+          <Printer className="w-4 h-4 mr-1.5" /> Print
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -352,12 +361,16 @@ export default function TicketDetailPage() {
               </h2>
               <div className="space-y-2">
                 {ticket.attachments.map((att) => (
-                  <a key={att.id} href={att.file} target="_blank" rel="noreferrer"
-                    className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:border-blue-200 hover:bg-blue-50 transition-colors group">
+                  <button
+                    key={att.id}
+                    type="button"
+                    onClick={() => downloadFile(att.download_url, att.filename)}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:border-blue-200 hover:bg-blue-50 transition-colors group text-left"
+                  >
                     <Paperclip className="w-4 h-4 text-gray-400 group-hover:text-blue-600" />
                     <span className="text-sm text-gray-700 group-hover:text-blue-700 flex-1 truncate">{att.filename}</span>
                     <span className="text-xs text-gray-400">{(att.file_size / 1024).toFixed(1)} KB</span>
-                  </a>
+                  </button>
                 ))}
               </div>
             </div>
@@ -432,8 +445,8 @@ export default function TicketDetailPage() {
             )}
 
             {/* Comment form */}
-            <form onSubmit={submitComment} className="mt-5 border-t border-gray-100 pt-5">
-              {isAgent && (
+            <form onSubmit={submitComment} className="mt-5 border-t border-gray-100 pt-5 print:hidden">
+              {isStaff && (
                 <div className="flex gap-3 mb-3">
                   <button
                     type="button"
@@ -672,7 +685,7 @@ export default function TicketDetailPage() {
 
               {/* Action buttons for the current user's participation */}
               {myParticipation && (
-                <div className="border-t border-gray-100 pt-3 flex gap-2">
+                <div className="border-t border-gray-100 pt-3 flex gap-2 print:hidden">
                   {myParticipation.status !== 'contributed' && (
                     <Button
                       size="sm"
@@ -699,12 +712,12 @@ export default function TicketDetailPage() {
           )}
 
           {/* Agent actions */}
-          {isAgent && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+          {isStaff && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4 print:hidden">
               <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Actions</h2>
 
               {/* Escalation lock — agents cannot act while ticket is escalated */}
-              {ticket.status === 'escalated' && user?.role === 'agent' ? (
+              {ticket.status === 'escalated' && !canManageEscalated ? (
                 <div className="flex items-start gap-3 bg-orange-50 border border-orange-200 rounded-xl p-4">
                   <TrendingUp className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
                   <div>
@@ -770,7 +783,7 @@ export default function TicketDetailPage() {
                   </div>
 
                   {/* Escalate to Manager — agents only, ticket not already escalated */}
-                  {user?.role === 'agent' && (
+                  {canEscalate && (
                     <div className="border-t border-gray-50 pt-4 space-y-2">
                       <button
                         type="button"
@@ -825,8 +838,8 @@ export default function TicketDetailPage() {
           )}
 
           {/* Pool-mode claim banner */}
-          {isAgent && ticket.department_detail?.routing_mode === 'pool' && !ticket.assigned_to && (
-            <div className="bg-violet-50 border border-violet-200 rounded-2xl p-5 space-y-3">
+          {isStaff && ticket.department_detail?.routing_mode === 'pool' && !ticket.assigned_to && (
+            <div className="bg-violet-50 border border-violet-200 rounded-2xl p-5 space-y-3 print:hidden">
               <div className="flex items-start gap-3">
                 <UserPlus className="w-5 h-5 text-violet-600 flex-shrink-0 mt-0.5" />
                 <div>
@@ -848,7 +861,7 @@ export default function TicketDetailPage() {
 
           {/* Reopen / Unassign */}
           {(ticket.status === 'resolved' || ticket.status === 'closed' || ticket.status === 'assigned') && (
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-3">
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 space-y-3 print:hidden">
               <div className="flex items-start gap-3">
                 <RefreshCw className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                 <div>

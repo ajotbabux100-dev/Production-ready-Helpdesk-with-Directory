@@ -4,12 +4,12 @@ from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import AuditLog
 from .serializers import AuditLogSerializer
-from users.permissions import IsManagerOrAbove
+from users.permissions import require_perm
 
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = AuditLogSerializer
-    permission_classes = [IsManagerOrAbove]
+    permission_classes = [require_perm('audit', 'view')]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['action', 'user', 'ticket']
     search_fields = ['description', 'user__email']

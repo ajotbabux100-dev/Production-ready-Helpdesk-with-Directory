@@ -2,7 +2,7 @@ from django.urls import path
 from .views import (
     DashboardSummaryView, TicketsByStatusView, TicketsByPriorityView,
     TicketsByDepartmentView, TicketTrendView, AgentPerformanceView,
-    SLAComplianceView,
+    SLAComplianceView, ReportsExportView,
 )
 
 urlpatterns = [
@@ -13,4 +13,5 @@ urlpatterns = [
     path('ticket-trend/', TicketTrendView.as_view(), name='ticket-trend'),
     path('agent-performance/', AgentPerformanceView.as_view(), name='agent-performance'),
     path('sla-compliance/', SLAComplianceView.as_view(), name='sla-compliance'),
+    path('export/', ReportsExportView.as_view(), name='reports-export'),
 ]

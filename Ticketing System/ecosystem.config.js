@@ -14,6 +14,7 @@ module.exports = {
       autorestart: true,
       max_restarts: 10,
       restart_delay: 3000,
+      max_memory_restart: '512M',
       watch: false,
       env: {
         PYTHONPATH: path.join(root, 'backend'),
@@ -30,6 +31,7 @@ module.exports = {
       autorestart: true,
       max_restarts: 10,
       restart_delay: 3000,
+      max_memory_restart: '512M',
       watch: false,
       error_file: path.join(root, 'backend', 'logs', 'pm2-web-error.log'),
       out_file:   path.join(root, 'backend', 'logs', 'pm2-web-out.log'),

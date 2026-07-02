@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import SystemSettings
+from .models import SystemSettings, LOGIN_HIGHLIGHT_ICONS
 
 MASK = '••••••••'
 
@@ -39,6 +39,18 @@ class SystemSettingsSerializer(serializers.ModelSerializer):
 
     def get_email_host_password(self, obj):
         return MASK if obj.email_host_password else ''
+
+    def validate_login_highlights(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError('Must be a list of {icon, text} items.')
+        for item in value:
+            if not isinstance(item, dict) or 'icon' not in item or 'text' not in item:
+                raise serializers.ValidationError('Each highlight needs an "icon" and "text".')
+            if item['icon'] not in LOGIN_HIGHLIGHT_ICONS:
+                raise serializers.ValidationError(f'Unknown icon "{item["icon"]}".')
+            if not str(item['text']).strip():
+                raise serializers.ValidationError('Highlight text cannot be empty.')
+        return value
 
     def update(self, instance, validated_data):
         # If the submitted password is the mask placeholder, discard it (keep existing)

@@ -1,17 +1,12 @@
 'use client'
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuthStore } from '@/app/lib/store'
 import api from '@/app/lib/api'
 import { SystemSettings } from '@/app/lib/types'
-import { Ticket, Eye, EyeOff, CheckCircle2, Clock, ShieldCheck, Zap } from 'lucide-react'
-
-const HIGHLIGHTS = [
-  { icon: Zap, text: 'Auto-assign tickets to the right team instantly' },
-  { icon: Clock, text: 'SLA tracking with real-time breach alerts' },
-  { icon: ShieldCheck, text: 'Full audit trail and role-based access' },
-  { icon: CheckCircle2, text: 'Email notifications at every step' },
-]
+import { Ticket, Eye, EyeOff, Zap } from 'lucide-react'
+import { LOGIN_ICON_MAP, DEFAULT_LOGIN_HIGHLIGHTS as DEFAULT_HIGHLIGHTS, DEFAULT_LOGIN_HEADLINE as DEFAULT_HEADLINE } from '@/app/lib/loginIcons'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -24,7 +19,7 @@ export default function LoginPage() {
   const [showPwd, setShowPwd] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [branding, setBranding] = useState<Pick<SystemSettings, 'company_name' | 'portal_name' | 'company_logo_url' | 'primary_color' | 'portal_welcome' | 'support_hours' | 'company_email'> | null>(null)
+  const [branding, setBranding] = useState<Pick<SystemSettings, 'company_name' | 'portal_name' | 'company_logo_url' | 'primary_color' | 'portal_welcome' | 'support_hours' | 'company_email' | 'login_headline' | 'login_highlights'> | null>(null)
 
   useEffect(() => {
     api.get('/branding/').then((r) => setBranding(r.data)).catch(() => {})
@@ -77,21 +72,26 @@ export default function LoginPage() {
         {/* Hero copy */}
         <div>
           <h2 className="text-4xl font-bold leading-tight mb-4">
-            Resolve faster.<br />Work smarter.
+            {(branding?.login_headline || DEFAULT_HEADLINE).split('\n').map((line, i) => (
+              <span key={i}>{line}{i === 0 && <br />}</span>
+            ))}
           </h2>
           <p className="text-white/70 text-base leading-relaxed mb-10">
             {branding?.portal_welcome || 'A single portal for all your support needs — submit tickets, track progress, and get resolutions faster.'}
           </p>
 
           <div className="space-y-4">
-            {HIGHLIGHTS.map(({ icon: Icon, text }) => (
-              <div key={text} className="flex items-center gap-3">
+            {(branding?.login_highlights?.length ? branding.login_highlights : DEFAULT_HIGHLIGHTS).map(({ icon, text }, i) => {
+              const Icon = LOGIN_ICON_MAP[icon] || Zap
+              return (
+              <div key={i} className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center flex-shrink-0">
                   <Icon className="w-4 h-4" />
                 </div>
                 <p className="text-sm text-white/80">{text}</p>
               </div>
-            ))}
+              )
+            })}
           </div>
         </div>
 
@@ -174,11 +174,7 @@ export default function LoginPage() {
 
             <p className="mt-6 text-center text-xs text-gray-400">
               Forgot your password?{' '}
-              {branding?.company_email ? (
-                <a href={`mailto:${branding.company_email}`} className="text-blue-600 hover:underline">Contact IT support</a>
-              ) : (
-                <span>Contact your administrator.</span>
-              )}
+              <Link href="/forgot-password" className="text-blue-600 hover:underline">Reset it</Link>
             </p>
           </div>
         </div>

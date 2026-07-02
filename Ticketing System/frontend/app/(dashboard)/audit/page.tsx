@@ -42,7 +42,7 @@ export default function AuditPage() {
   useEffect(() => { fetchLogs() }, [page, search])
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4">
+    <div className="space-y-4">
       <div className="flex items-center gap-3">
         <Shield className="w-6 h-6 text-blue-900" />
         <div>

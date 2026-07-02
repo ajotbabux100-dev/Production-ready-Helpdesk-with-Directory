@@ -1,11 +1,10 @@
 from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.filters import SearchFilter
 from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import Department, SLAPolicy
 from .serializers import DepartmentSerializer, DepartmentMinimalSerializer, SLAPolicySerializer
-from users.permissions import IsAdminUser, IsManagerOrAbove
+from users.permissions import require_perm
 
 
 class DepartmentViewSet(viewsets.ModelViewSet):
@@ -20,9 +19,13 @@ class DepartmentViewSet(viewsets.ModelViewSet):
         return DepartmentSerializer
 
     def get_permissions(self):
-        if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            return [IsAdminUser()]
-        return [IsAuthenticated()]
+        if self.action == 'create':
+            return [require_perm('departments', 'add')()]
+        if self.action in ['update', 'partial_update']:
+            return [require_perm('departments', 'edit')()]
+        if self.action == 'destroy':
+            return [require_perm('departments', 'delete')()]
+        return [require_perm('departments', 'view')()]
 
     def perform_destroy(self, instance):
         from django.utils import timezone
@@ -43,6 +46,6 @@ class DepartmentViewSet(viewsets.ModelViewSet):
 class SLAPolicyViewSet(viewsets.ModelViewSet):
     queryset = SLAPolicy.objects.select_related('department').all()
     serializer_class = SLAPolicySerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [require_perm('departments', 'edit')]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['department', 'priority']

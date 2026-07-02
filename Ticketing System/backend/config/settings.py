@@ -29,6 +29,8 @@ INSTALLED_APPS = [
     'audit',
     'reports',
     'branding',
+    'directory',
+    'vault',
 ]
 
 MIDDLEWARE = [
@@ -100,7 +102,7 @@ AUTH_USER_MODEL = 'users.User'
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
-    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator', 'OPTIONS': {'min_length': 10}},
     {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
@@ -139,6 +141,21 @@ REST_FRAMEWORK = {
     'DEFAULT_RENDERER_CLASSES': [
         'rest_framework.renderers.JSONRenderer',
     ],
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.ScopedRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/hour',
+        'user': '2000/hour',
+        # Keyed by IP, so an office/NAT egress shared by many staff needs
+        # headroom above what a single brute-force script would use.
+        'login': '30/min',
+        'vault_reveal': '20/min',
+        'otp_request': '5/min',
+        'otp_verify': '10/min',
+    },
 }
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
@@ -165,6 +182,9 @@ EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='Helpdesk <noreply@example.com>')
 
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:3000')
+
+# ── Password Vault ────────────────────────────────────────────────────────────
+VAULT_ENCRYPTION_KEY = config('VAULT_ENCRYPTION_KEY')
 
 # ── Upload limits ─────────────────────────────────────────────────────────────
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024

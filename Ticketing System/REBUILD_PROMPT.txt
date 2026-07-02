@@ -1,0 +1,729 @@
+================================================================================
+  GSH/ISH OMAN — HELPDESK TICKETING SYSTEM — FULL REBUILD REFERENCE
+  Created: 2026-06-30   Author: AJO (it@gshoman.com)
+  GitHub:  https://github.com/itgshoman1-prog/Helpdesk-Ticket
+================================================================================
+
+PURPOSE OF THIS FILE
+--------------------
+Paste the contents of this file into a new Claude conversation and say:
+"Build me this exact system from scratch." Claude will have everything it needs
+to rebuild the complete application with all features, exact tech stack, and
+correct architecture.
+
+================================================================================
+  1. WHAT THIS SYSTEM IS
+================================================================================
+
+A full-stack internal Helpdesk & IT Ticketing System built for GSH/ISH OMAN.
+Staff submit support tickets, agents resolve them, managers oversee departments,
+and admins control everything. The system is self-hosted (Windows Server / VPS).
+
+Key principles:
+- Role-based access: end_user / agent / manager / admin
+- Every ticket belongs to a department and has an SLA policy
+- Full audit trail of every action
+- In-app notifications + optional email (SMTP) notifications
+- Completely white-label: company name, logo, colors, ticket prefix all configurable
+- Soft-delete for users and departments (preserve ticket history)
+
+================================================================================
+  2. TECH STACK — EXACT VERSIONS
+================================================================================
+
+BACKEND
+  Language:         Python 3.12
+  Framework:        Django 6.0.6
+  API:              Django REST Framework 3.17.1
+  Auth:             djangorestframework-simplejwt 5.5.1  (JWT, token blacklist)
+  CORS:             django-cors-headers 4.9.0
+  Filters:          django-filter 25.2
+  Images:           Pillow 12.2.0
+  Database driver:  psycopg2-binary 2.9.12
+  Config:           python-decouple 3.8  (reads .env file)
+  Other:            asgiref 3.11.1, sqlparse 0.5.5, tzdata 2026.2
+
+FRONTEND
+  Framework:        Next.js 15.3.4  (App Router, NOT Pages Router)
+  React:            19.0.0
+  Language:         TypeScript 5
+  Styling:          Tailwind CSS 4
+  State:            Zustand 5.0.14  (with persist middleware)
+  HTTP:             Axios 1.18.1
+  Icons:            Lucide React 1.22.0
+  Charts:           Recharts 3.9.0
+  Forms:            React Hook Form 7.80.0 + Zod 4.4.3 + @hookform/resolvers
+  Date:             date-fns 4.4.0
+  UI primitives:    Radix UI (dialog, dropdown, select, tabs, toast, avatar, etc.)
+  Query:            @tanstack/react-query 5.101.2
+  Utilities:        clsx, tailwind-merge, class-variance-authority
+
+DATABASE
+  Default:  PostgreSQL (configurable via .env DB_ENGINE=postgres)
+  Dev:      SQLite also supported (DB_ENGINE=sqlite)
+
+================================================================================
+  3. FOLDER STRUCTURE
+================================================================================
+
+Ticketing System/            <- git root
+  backend/
+    config/
+      settings.py            <- Django settings (reads .env)
+      urls.py                <- root URL conf
+      wsgi.py
+      asgi.py
+    users/                   <- custom User model, auth views
+    departments/             <- Department, SLAPolicy models
+    tickets/                 <- Ticket, Comment, Attachment, TicketParticipant, TicketCategory
+    notifications/           <- Notification model + email logic
+    audit/                   <- AuditLog model
+    reports/                 <- reporting views (aggregates)
+    branding/                <- SystemSettings (single-row config table)
+    manage.py
+    requirements.txt
+    .env                     <- secrets (not in git)
+  frontend/
+    app/
+      (auth)/
+        login/page.tsx
+      (dashboard)/
+        layout.tsx           <- 'use client', guards auth with _hasHydrated from Zustand
+        dashboard/page.tsx
+        tickets/
+          page.tsx           <- ticket list (active/resolved tabs, filters)
+          new/page.tsx       <- create ticket form
+          [id]/page.tsx      <- ticket detail with comments, @mention, escalation
+        departments/page.tsx <- dept management + SLA policies
+        users/page.tsx       <- user management
+        reports/page.tsx     <- charts (by status, priority, dept, SLA)
+        settings/page.tsx    <- branding + SMTP + notification toggles + ticket numbering
+        audit/page.tsx       <- audit log table
+        notifications/page.tsx
+      components/
+        layout/
+          Sidebar.tsx        <- role-aware nav
+          Topbar.tsx         <- page title, bell icon with unread count, user menu
+        ui/
+          badge.tsx, button.tsx, card.tsx, input.tsx, modal.tsx, select.tsx, textarea.tsx
+      lib/
+        store.ts             <- Zustand auth store (user, accessToken, refreshToken, _hasHydrated)
+        api.ts               <- Axios instance with JWT refresh interceptor
+        types.ts             <- TypeScript interfaces
+      layout.tsx             <- root layout (html/body, no auth logic)
+      page.tsx               <- root page (server component, redirect to /dashboard)
+    package.json
+    next.config.ts
+    tailwind.config.ts
+    tsconfig.json
+
+================================================================================
+  4. DATABASE MODELS (exact fields)
+================================================================================
+
+--- users.User (extends AbstractBaseUser) ---
+  email           EmailField unique           (USERNAME_FIELD)
+  first_name      CharField 100
+  last_name       CharField 100
+  phone           CharField 20 blank
+  role            CharField choices: end_user / agent / manager / admin  default=end_user
+  department      FK → departments.Department  null/blank
+  avatar          ImageField upload_to='avatars/'  null/blank
+  is_active       BooleanField default=True
+  is_staff        BooleanField default=False
+  is_deleted      BooleanField default=False   <- soft delete
+  deleted_alias   CharField 50 blank           <- display name after deletion
+  deleted_at      DateTimeField null/blank
+  date_joined     DateTimeField auto_now_add
+
+  Properties: full_name, is_admin, is_manager_or_above, is_agent_or_above
+
+--- departments.Department ---
+  name            CharField 200 unique
+  description     TextField blank
+  email           EmailField blank
+  manager         FK → users.User null/blank  related_name='managed_departments'
+  auto_assign_to  FK → users.User null/blank  related_name='auto_assigned_departments'
+  routing_mode    CharField choices: manager / pool  default=manager
+  mention_scope   CharField choices: department / all  default=all
+  is_active       BooleanField default=True
+  is_deleted      BooleanField default=False
+  deleted_alias   CharField 50 blank
+  deleted_at      DateTimeField null/blank
+  created_at      DateTimeField auto_now_add
+  updated_at      DateTimeField auto_now
+
+--- departments.SLAPolicy ---
+  department      FK → Department null/blank  (null = global default)
+  priority        CharField choices: critical / high / medium / low
+  response_time_minutes   PositiveIntegerField
+  resolution_time_minutes PositiveIntegerField
+  unique_together: (department, priority)
+
+  Properties: response_time_display, resolution_time_display (formats minutes → "2 hr 30 min")
+
+--- tickets.TicketCategory ---
+  name            CharField 100 unique
+  slug            SlugField 100 unique
+  description     CharField 300 blank
+  color           CharField 7 default='#6b7280'  (hex badge color)
+  is_active       BooleanField default=True
+  order           PositiveIntegerField default=0
+  departments     M2M → Department blank  (empty = all departments)
+  created_at      DateTimeField auto_now_add
+
+--- tickets.TicketFormConfig (single-row) ---
+  category_required    BooleanField default=True
+  priority_required    BooleanField default=False
+  department_required  BooleanField default=True
+  location_required    BooleanField default=False
+  Access via: TicketFormConfig.get_config()
+
+--- tickets.Ticket ---
+  ticket_number   CharField 20 unique editable=False  (auto-generated)
+  title           CharField 300
+  description     TextField
+  category        CharField 100 blank
+  priority        CharField choices: critical/high/medium/low  default=medium
+  status          CharField choices:
+                    new / assigned / in_progress / pending_user / pending_vendor /
+                    escalated / resolved / closed / reopened
+  requester       FK → users.User  related_name='submitted_tickets'
+  department      FK → departments.Department  null/blank
+  assigned_to     FK → users.User  null/blank  related_name='assigned_tickets'
+  sla_response_due     DateTimeField null/blank
+  sla_resolution_due   DateTimeField null/blank
+  first_response_at    DateTimeField null/blank
+  resolved_at          DateTimeField null/blank
+  closed_at            DateTimeField null/blank
+  location        CharField 200 blank
+  created_at      DateTimeField auto_now_add
+  updated_at      DateTimeField auto_now
+
+  Properties: is_sla_response_breached, is_sla_resolution_breached
+  Ticket number auto-generated via SystemSettings.build_ticket_number() (atomic counter)
+
+--- tickets.Comment ---
+  ticket          FK → Ticket  related_name='comments'
+  author          FK → users.User  related_name='comments'
+  body            TextField
+  is_internal     BooleanField default=False  (internal notes hidden from requester)
+  created_at      DateTimeField auto_now_add
+  updated_at      DateTimeField auto_now
+
+--- tickets.Attachment ---
+  ticket          FK → Ticket
+  uploaded_by     FK → users.User
+  file            FileField upload_to='attachments/ticket_{id}/'
+  filename        CharField 255
+  file_size       PositiveIntegerField
+  content_type    CharField 100
+  uploaded_at     DateTimeField auto_now_add
+
+--- tickets.CommentAttachment ---
+  (same as Attachment but FK to Comment)
+
+--- tickets.TicketParticipant ---
+  ticket          FK → Ticket  related_name='participants'
+  user            FK → users.User  related_name='ticket_participations'
+  invited_by      FK → users.User null/blank  related_name='sent_invitations'
+  status          CharField choices: active / contributed / exited
+  invited_at      DateTimeField auto_now_add
+  unique_together: (ticket, user)
+
+--- notifications.Notification ---
+  recipient       FK → users.User  related_name='notifications'
+  ticket          FK → Ticket null/blank  related_name='notifications'
+  notification_type  CharField choices:
+                      ticket_created / ticket_assigned / status_updated / comment_added /
+                      ticket_resolved / ticket_closed / sla_breach / ticket_escalated
+  title           CharField 300
+  message         TextField
+  is_read         BooleanField default=False
+  email_sent      BooleanField default=False
+  created_at      DateTimeField auto_now_add
+
+--- audit.AuditLog ---
+  user            FK → users.User null/blank
+  action          CharField choices:
+                    ticket_created / ticket_updated / ticket_assigned / ticket_reassigned /
+                    status_changed / priority_changed / comment_added / attachment_added /
+                    ticket_resolved / ticket_closed / ticket_reopened /
+                    user_created / user_updated / user_deactivated /
+                    department_created / department_updated / login / logout
+  ticket          FK → Ticket null/blank
+  description     TextField
+  old_value       TextField blank
+  new_value       TextField blank
+  ip_address      GenericIPAddressField null/blank
+  timestamp       DateTimeField auto_now_add
+
+--- branding.SystemSettings (single-row, pk=1) ---
+  company_name        CharField 200 default='Helpdesk'
+  company_logo        ImageField upload_to='branding/'
+  company_tagline     CharField 300 blank
+  company_email       EmailField blank
+  company_phone       CharField 50 blank
+  company_website     URLField blank
+  company_address     TextField blank
+  portal_name         CharField 200 default='Helpdesk Portal'
+  portal_welcome      TextField
+  support_hours       CharField 200 default='Sunday - Thursday, 8 AM - 5 PM'
+  primary_color       CharField 7 default='#1e3a5f'
+  favicon             ImageField upload_to='branding/'
+  ticket_prefix       CharField 20 default='TKT'
+  ticket_separator    CharField 5 default='-'
+  ticket_include_year BooleanField default=True
+  ticket_year_format  CharField choices: YYYY / YY  default='YYYY'
+  ticket_seq_digits   PositiveIntegerField default=5
+  ticket_reset_yearly BooleanField default=True
+  _ticket_counter     PositiveIntegerField default=0  (internal)
+  _ticket_counter_year PositiveIntegerField default=0 (internal)
+  email_enabled       BooleanField default=False
+  email_host          CharField 200 default='smtp.office365.com'
+  email_port          PositiveIntegerField default=587
+  email_use_tls       BooleanField default=True
+  email_use_ssl       BooleanField default=False
+  email_host_user     CharField 200 blank
+  email_host_password CharField 500 blank
+  email_timeout       PositiveIntegerField default=30
+  email_sender_name   CharField 200 default='Helpdesk'
+  email_sender_address EmailField blank
+  email_reply_to      EmailField blank
+  email_footer        TextField blank
+  notify_on_ticket_created    BooleanField default=True
+  notify_on_ticket_assigned   BooleanField default=True
+  notify_on_status_updated    BooleanField default=True
+  notify_on_comment_added     BooleanField default=True
+  notify_on_ticket_resolved   BooleanField default=True
+  notify_on_sla_breach        BooleanField default=True
+  Access via: SystemSettings.get()
+  build_ticket_number() — atomic increment with select_for_update, resets yearly
+
+================================================================================
+  5. API ENDPOINTS
+================================================================================
+
+Base URL: http://localhost:8000/api/
+
+AUTH
+  POST   /api/auth/login/          body: {email, password}  → {access, refresh, user}
+  POST   /api/auth/logout/         body: {refresh}
+  POST   /api/auth/token/refresh/  body: {refresh}  → {access}
+  GET    /api/auth/me/             → current user object
+  PUT    /api/auth/me/             → update own profile
+
+USERS         (admin only for CUD)
+  GET    /api/users/               list (search, filter by role/dept/is_active)
+  POST   /api/users/               create
+  GET    /api/users/{id}/          detail
+  PUT    /api/users/{id}/          update
+  PATCH  /api/users/{id}/deactivate/   soft-delete user
+
+DEPARTMENTS   (admin only for CUD)
+  GET    /api/departments/         list (with nested sla_policies)
+  POST   /api/departments/         create
+  GET    /api/departments/{id}/    detail
+  PUT    /api/departments/{id}/    update
+  DELETE /api/departments/{id}/    soft-delete (sets is_deleted=True)
+  POST   /api/departments/{id}/sla_policies/  add SLA policy
+  PUT    /api/departments/{id}/sla_policies/{pid}/  update
+  DELETE /api/departments/{id}/sla_policies/{pid}/  delete
+
+TICKETS
+  GET    /api/tickets/             list (filtered by role: admin=all, manager=dept, agent=assigned+dept, user=own)
+  POST   /api/tickets/             create ticket (requester = current user)
+  GET    /api/tickets/{id}/        detail (with comments, attachments, participants)
+  PATCH  /api/tickets/{id}/assign/        assign to agent
+  PATCH  /api/tickets/{id}/update_status/ change status
+  PATCH  /api/tickets/{id}/escalate/      escalate (manager/admin only); locks agent actions
+  PATCH  /api/tickets/{id}/reopen/        reopen resolved/closed ticket
+  POST   /api/tickets/{id}/comments/      add comment (with optional is_internal flag)
+  POST   /api/tickets/{id}/attachments/   upload file
+  GET    /api/tickets/{id}/participants/  list @mention contributors
+  POST   /api/tickets/{id}/invite/        @mention a user (adds TicketParticipant)
+
+  Filters: status, priority, department, assigned_to, category, created_at range
+  Search:  ticket_number, title, description, requester__email
+
+CATEGORIES    (admin/manager for CUD)
+  GET    /api/categories/          list active categories
+  POST   /api/categories/          create
+  PUT    /api/categories/{id}/     update
+  DELETE /api/categories/{id}/     deactivate (is_active=False)
+
+NOTIFICATIONS
+  GET    /api/notifications/           list for current user (newest first)
+  POST   /api/notifications/{id}/mark_read/   mark one read
+  POST   /api/notifications/mark_all_read/    mark all read
+  GET    /api/notifications/unread_count/     → {count: N}
+
+AUDIT LOG     (admin only)
+  GET    /api/audit/               list (filter by action, user, ticket, date range)
+
+REPORTS       (manager/admin)
+  GET    /api/reports/summary/     → ticket counts by status, priority, department
+  GET    /api/reports/sla/         → SLA breach stats
+  GET    /api/reports/agent/       → per-agent resolution stats
+
+BRANDING
+  GET    /api/branding/            → public settings (company name, logo URL, colors, portal name)
+  GET    /api/settings/            → full settings (admin only)
+  PUT    /api/settings/            → update settings (admin only)
+  POST   /api/settings/test_email/ → send test email
+
+FORM CONFIG
+  GET    /api/ticket-form-config/  → {category_required, priority_required, ...}
+  PUT    /api/ticket-form-config/  → update (admin only)
+
+================================================================================
+  6. BUSINESS LOGIC
+================================================================================
+
+TICKET NUMBERING
+  Format: {PREFIX}{SEP}{YEAR}{SEP}{SEQUENCE}  e.g. TKT-2026-00001
+  - Fully configurable prefix, separator, year format (YYYY/YY), sequence digits
+  - Optional yearly reset of counter
+  - Atomic generation with select_for_update to prevent duplicates
+
+SLA ENFORCEMENT
+  On ticket create: look up SLAPolicy for (department, priority). Fall back to global
+  (department=null, same priority). Set ticket.sla_response_due and sla_resolution_due.
+  Ticket model properties is_sla_response_breached and is_sla_resolution_breached compute live.
+
+AUTO-ASSIGNMENT
+  On ticket create: if department.routing_mode == 'pool' → no auto-assign (pool visible to all dept members).
+  If routing_mode == 'manager' and department.auto_assign_to is set → assign to that person.
+
+ESCALATION
+  - Only manager or admin can escalate a ticket.
+  - Once escalated, agent cannot change status, reassign, or add assignment.
+  - Only manager/admin can act on escalated ticket.
+  - Cannot escalate an already-escalated ticket.
+  - Triggers ticket_escalated notification to dept manager and admin.
+
+DEPARTMENT POOL ROUTING
+  - routing_mode = 'pool': all members of the department see unassigned tickets.
+  - Any agent in the dept can claim (assign to themselves) and resolve.
+  - routing_mode = 'manager': manager assigns each ticket to a specific agent.
+
+@MENTION / CONTRIBUTORS
+  - In ticket comments, type @Name to invite a user.
+  - Creates TicketParticipant record for that user.
+  - mention_scope on Department controls who can be mentioned:
+      'department' = only dept members    'all' = anyone in the system
+  - Participants see the ticket even if not the requester or assigned agent.
+  - Participant status: active → contributed (after they comment) → exited.
+
+SOFT DELETE
+  Users: is_deleted=True, deleted_alias='Deleted User #N', is_active=False.
+  - Email freed for reuse by prefixing with 'deleted_' + timestamp.
+  - All their tickets and audit logs preserved, display shows deleted_alias.
+  Departments: is_deleted=True, deleted_alias='Deleted Dept #N', is_active=False.
+  - All dept tickets preserved.
+
+ROLE PERMISSIONS MATRIX
+  end_user:  submit own tickets, add comments, view own tickets only
+  agent:     all above + view/work assigned tickets + all dept tickets (pool mode)
+  manager:   all above + view all dept tickets + assign + escalate + dept management
+  admin:     everything + user management + settings + audit log + reports
+
+TICKET VISIBILITY
+  Admin:   all tickets
+  Manager: all tickets in own department + invited as participant
+  Agent:   assigned tickets + all dept tickets (pool) + invited as participant
+  User:    own submitted tickets + invited as participant
+
+TICKET STATUS FLOW
+  new → assigned → in_progress → pending_user / pending_vendor → resolved → closed
+  Any open status → escalated (manager/admin)
+  resolved/closed → reopened
+
+FIRST RESPONSE TRACKING
+  first_response_at set when agent/manager first adds a non-internal comment.
+  Used for SLA response breach calculation.
+
+EMAIL NOTIFICATIONS
+  Triggered by: ticket_created, ticket_assigned, status_updated, comment_added,
+  ticket_resolved, sla_breach, ticket_escalated.
+  Each event type can be toggled on/off in SystemSettings.
+  SMTP configured in SystemSettings (host, port, TLS/SSL, credentials).
+  Email content includes ticket number, title, status, link.
+  notify_on_* flags control which events actually send emails.
+
+IN-APP NOTIFICATIONS
+  Created alongside email for every event.
+  Bell icon in Topbar shows unread count (polled every 60 seconds).
+  Notifications page lists all, with mark-read.
+
+AUDIT LOG
+  Every significant action logged: ticket CRUD, status changes, assignments,
+  comments, user CRUD, dept CRUD, login/logout.
+  Stores: user, action type, ticket, description, old_value, new_value, IP, timestamp.
+  Visible to admin only.
+
+================================================================================
+  7. FRONTEND PAGES & FEATURES
+================================================================================
+
+/login
+  - Branded left panel (company logo, primary color, portal welcome message, highlights)
+  - Email + password form
+  - On success: store JWT + user in Zustand + localStorage, redirect to /dashboard
+  - Branding loaded from /api/branding/ (unauthenticated endpoint)
+
+/dashboard
+  - Summary cards: open tickets, my tickets, escalated, SLA breached
+  - Recent tickets list
+  - Role-specific widgets
+
+/tickets
+  - Two tabs: Active (new/assigned/in_progress/pending/escalated/reopened) and Resolved (resolved/closed)
+  - Filter by: status, priority, department, date range, search text
+  - Sortable columns
+  - Pagination
+  - "New Ticket" button
+
+/tickets/new
+  - Form: title, description, category (dropdown from API), priority, department, location
+  - Configurable required fields via TicketFormConfig
+  - File attachment upload
+  - Categories filtered by department selection
+
+/tickets/[id]
+  - Full ticket detail: title, status badge, priority badge, SLA indicators (response/resolution due)
+  - Assign to agent (manager/admin)
+  - Change status (role-aware)
+  - Escalate button (manager/admin, hidden if already escalated)
+  - Reopen button (resolved/closed)
+  - Comments thread with timestamps
+  - @mention autocomplete in comment box (searches users per mention_scope)
+  - Internal notes toggle (agent/manager/admin only, hidden from end_user)
+  - File attachments list + upload
+  - Participants/contributors panel
+
+/departments
+  - List of active departments with member count, manager name, routing mode
+  - Admin: Create / Edit / Deactivate / Delete (soft) department
+  - SLA policy table per department (per priority: critical/high/medium/low)
+  - Add / Edit / Delete SLA policies inline
+
+/users
+  - List of users with name, email, role, department, status
+  - Admin: Create user, Edit user, Deactivate (soft-delete) user
+  - Filter by role, department, active/inactive
+
+/reports
+  - Charts: tickets by status (pie), by priority (bar), by department (bar)
+  - SLA compliance rate
+  - Agent performance table (tickets resolved, avg resolution time)
+  - Date range filter
+
+/settings  (admin only)
+  - Branding: company name, logo upload, tagline, colors, portal name, welcome text, support hours
+  - Ticket numbering: prefix, separator, year format, sequence digits, yearly reset, live preview
+  - Email/SMTP: host, port, TLS, credentials, sender name/email, reply-to, footer, test email button
+  - Notification toggles: per-event enable/disable
+  - Ticket form: toggle required fields
+  - Category management: add/edit/deactivate categories
+
+/audit  (admin only)
+  - Full audit log table with filter by action type, user, date range
+  - Shows old_value → new_value for status/priority changes
+
+/notifications
+  - All notifications newest first
+  - Mark individual or all as read
+  - Click to go to the ticket
+
+================================================================================
+  8. ZUSTAND STORE (frontend/app/lib/store.ts)
+================================================================================
+
+State:
+  user              User | null
+  accessToken       string | null
+  refreshToken      string | null
+  _hasHydrated      boolean   (becomes true after persist rehydrates from localStorage)
+  setHasHydrated    (v: boolean) => void
+  setAuth           (user, access, refresh) => void   saves to localStorage + state
+  clearAuth         () => void                         removes from localStorage + state
+  setUser           (user) => void
+
+Persist config:
+  name: 'auth-storage'
+  partialize: saves user, accessToken, refreshToken (NOT _hasHydrated)
+  onRehydrateStorage: () => (state) => state?.setHasHydrated(true)
+
+Dashboard layout guards using _hasHydrated:
+  - If !hasHydrated → show spinner (don't render children)
+  - If hasHydrated && !user → router.replace('/login')
+  - If hasHydrated && user → render full layout
+
+================================================================================
+  9. AXIOS INSTANCE (frontend/app/lib/api.ts)
+================================================================================
+
+Base URL: http://localhost:8000/api  (or env variable NEXT_PUBLIC_API_URL)
+Interceptor — request: attach Authorization: Bearer {accessToken} from localStorage
+Interceptor — response 401: try refresh token → if success retry original request
+                             → if refresh fails: clearAuth + redirect to /login
+
+================================================================================
+  10. KEY IMPLEMENTATION DETAILS
+================================================================================
+
+BACKEND
+
+  Department auto-sets manager:
+    users/signals.py: post_save on User — if role changed to 'manager' and user has dept,
+    set dept.manager = user automatically. If changed away from manager, clear it.
+
+  SLA application (tickets/sla.py):
+    Look up SLAPolicy for (ticket.department, ticket.priority).
+    Fall back to (None, ticket.priority) for global default.
+    Set ticket.sla_response_due = now + response_time_minutes
+    Set ticket.sla_resolution_due = now + resolution_time_minutes
+
+  Auto-assign (tickets/auto_assign.py):
+    If dept.routing_mode == 'pool': do nothing (leave assigned_to=None)
+    If dept.auto_assign_to is set: ticket.assigned_to = dept.auto_assign_to
+
+  Notification sending (notifications/tasks.py):
+    Called after every ticket event. Reads SystemSettings to check:
+      - email_enabled flag
+      - relevant notify_on_* flag
+    Creates Notification record for each recipient.
+    If email enabled and flag on, sends email via SMTP.
+    Recipients depend on event type:
+      ticket_created:  dept manager + admin
+      ticket_assigned: assigned agent
+      status_updated:  requester + assigned agent
+      comment_added:   requester + assigned agent + all participants
+      ticket_resolved: requester
+      sla_breach:      dept manager + admin
+      ticket_escalated: dept manager + admin
+
+  Permissions (users/permissions.py):
+    IsAgentOrAbove: user.role in (agent, manager, admin)
+    IsManagerOrAbove: user.role in (manager, admin)
+    IsAdminUser: user.role == admin
+
+  Media files:
+    avatars/ → user profile pictures
+    branding/ → company logo, favicon
+    attachments/ticket_{id}/ → ticket file attachments
+    attachments/comment_{id}/ → comment file attachments
+
+FRONTEND
+
+  Sidebar navigation — role-aware visibility:
+    end_user: Dashboard, My Tickets, New Ticket, Notifications
+    agent:    + Departments (read-only), Reports (read-only)
+    manager:  + Users (read-only), Departments (edit SLA), Reports
+    admin:    + Users (full), Settings, Audit Log
+
+  Topbar:
+    Shows current page title, unread notification bell (polls /api/notifications/unread_count/ every 60s),
+    user avatar (initials), dropdown with Profile + Sign Out
+
+  @mention autocomplete:
+    In comment textarea, detect '@' character, show dropdown of matching users.
+    Users list filtered by department.mention_scope (dept members only OR all users).
+    On select: POST /api/tickets/{id}/invite/ to create TicketParticipant.
+
+  SLA display:
+    In ticket detail and list, show colored badges:
+      Green if within SLA   Orange if < 1hr remaining   Red if breached
+
+  Charts (reports page):
+    Recharts library. PieChart for status distribution. BarChart for priority and department.
+    Line chart for tickets over time.
+
+================================================================================
+  11. ENVIRONMENT VARIABLES (.env in backend/)
+================================================================================
+
+SECRET_KEY=your-django-secret-key
+DEBUG=True
+ALLOWED_HOSTS=localhost,127.0.0.1
+
+DB_ENGINE=postgres
+DB_NAME=ticketing_db
+DB_USER=postgres
+DB_PASSWORD=yourpassword
+DB_HOST=localhost
+DB_PORT=5432
+
+JWT_ACCESS_TOKEN_LIFETIME_MINUTES=60
+JWT_REFRESH_TOKEN_LIFETIME_DAYS=7
+
+FRONTEND (.env.local in frontend/)
+NEXT_PUBLIC_API_URL=http://localhost:8000/api
+
+================================================================================
+  12. HOW TO START THE SYSTEM (Windows)
+================================================================================
+
+BACKEND (in backend/ folder):
+  python -m venv venv
+  venv\Scripts\activate
+  pip install -r requirements.txt
+  python manage.py migrate
+  python manage.py createsuperuser
+  python manage.py runserver 8000
+
+FRONTEND (in frontend/ folder):
+  npm install
+  node node_modules\next\dist\bin\next dev --port 3000
+  (NOTE: use this direct node invocation instead of 'npm run dev' on Windows paths with & in the name)
+
+Access:
+  Frontend: http://localhost:3000
+  Django Admin: http://localhost:8000/admin/
+
+================================================================================
+  13. KNOWN ISSUES & WORKAROUNDS
+================================================================================
+
+1. Windows path with '&' character (GSH&ISH OMAN):
+   npm run dev fails with EPERM on this path.
+   WORKAROUND: use direct node invocation:
+   node node_modules\next\dist\bin\next dev --port 3000
+
+2. Next.js 15.3.4 + React 19 "invariant expected layout router to be mounted" (E56):
+   Root cause: Zustand's onRehydrateStorage fires set() synchronously during
+   localStorage hydration, which interrupts Next.js's hydrateRoot() startTransition.
+   The dashboard layout hides {children} while _hasHydrated=false, which prevents
+   OuterLayoutRouter from running during the dangerous hydration window.
+   If this error appears again after future Next.js upgrades, the fix is to ensure
+   {children} is not rendered in ANY layout during the initial hydration render.
+
+3. Manager seeing ISE on Departments page:
+   DepartmentMinimalSerializer (for non-admin) omits sla_policies field.
+   Always use optional chaining: dept.sla_policies?.length instead of dept.sla_policies.length
+   All admin-only actions (Edit, Delete, Add) must be hidden behind isAdmin check.
+
+================================================================================
+  14. WHAT TO TELL CLAUDE WHEN REBUILDING
+================================================================================
+
+"I want to build a full-stack Helpdesk Ticketing System. Here is the complete
+specification. Build it exactly as described — same models, same features, same
+tech stack. Start with the backend Django setup, then the frontend Next.js setup.
+
+Key things to get right:
+1. Use Next.js 15 App Router (not Pages Router)
+2. The dashboard layout.tsx MUST be a 'use client' component that hides {children}
+   while Zustand _hasHydrated is false — this prevents a React hydration error
+   with Next.js 15 + React 19.
+3. Soft-delete for users and departments (don't actually delete rows)
+4. SLA policies per department per priority, with global fallback
+5. Ticket number is atomically generated with configurable format
+6. All settings (branding, SMTP, notification toggles) in a single SystemSettings row
+7. Role-based access enforced on both backend (DRF permissions) and frontend (UI)
+8. @mention system creates TicketParticipant records and extends ticket visibility"
+
+================================================================================
+  END OF FILE
+================================================================================

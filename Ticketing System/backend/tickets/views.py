@@ -1,10 +1,14 @@
-from rest_framework import viewsets, status
+import logging
+
+from rest_framework import viewsets, status, generics
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.filters import SearchFilter, OrderingFilter
+from rest_framework.exceptions import NotFound
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
+from django.http import FileResponse
 
 from rest_framework.views import APIView
 from .models import Ticket, Comment, Attachment, TicketFormConfig, TicketCategory, TicketParticipant
@@ -16,11 +20,42 @@ from .serializers import (
 from .filters import TicketFilter
 from .sla import apply_sla
 from .auto_assign import auto_assign
-from users.permissions import IsAgentOrAbove
+from .validators import attachment_validation_error
+from users.permissions import require_perm
 from audit.utils import log_action
 from audit.models import AuditLog
 from notifications.tasks import send_ticket_notification
 from notifications.email import notify_ticket_escalated
+
+logger = logging.getLogger(__name__)
+
+
+def visible_tickets_for(user, qs=None):
+    """The single source of truth for "which tickets can this user see" -
+    shared by TicketViewSet.get_queryset() and anything else (e.g. the
+    attachment download view) that needs to authorize access to a ticket
+    or its related objects without duplicating/drifting from this logic."""
+    if qs is None:
+        qs = Ticket.objects.select_related('requester', 'department', 'assigned_to')
+
+    # Invited/participated tickets visible to everyone regardless of role
+    invited_qs = qs.filter(
+        participants__user=user,
+        participants__status__in=(TicketParticipant.ACTIVE, TicketParticipant.CONTRIBUTED),
+    )
+
+    # Own submitted tickets are always visible, regardless of role/scope -
+    # otherwise a staff member's own request could fall outside their
+    # department/assignment scope and become invisible to them.
+    own_qs = qs.filter(requester=user)
+
+    if user.is_admin or user.has_perm_key('tickets', 'view_all'):
+        return qs.all()
+    if user.has_perm_key('tickets', 'manage_escalated'):
+        return (qs.filter(department=user.department) | invited_qs | own_qs).distinct()
+    if user.has_perm_key('tickets', 'claim'):
+        return (qs.filter(assigned_to=user) | qs.filter(department=user.department) | invited_qs | own_qs).distinct()
+    return (own_qs | invited_qs).distinct()
 
 
 class TicketViewSet(viewsets.ModelViewSet):
@@ -30,25 +65,28 @@ class TicketViewSet(viewsets.ModelViewSet):
     ordering_fields = ['created_at', 'updated_at', 'priority', 'status']
     ordering = ['-created_at']
 
+    def get_permissions(self):
+        # NOTE: this override takes full control of permission resolution -
+        # per-action `@action(permission_classes=...)` kwargs are NOT
+        # consulted by DRF once get_permissions() is overridden, so every
+        # custom action must be handled explicitly here.
+        if self.action == 'create':
+            return [require_perm('tickets', 'add')()]
+        if self.action in ['update', 'partial_update']:
+            return [require_perm('tickets', 'edit')()]
+        if self.action == 'destroy':
+            return [require_perm('tickets', 'delete')()]
+        if self.action in ['assign', 'update_status', 'claim']:
+            return [require_perm('tickets', 'claim')()]
+        if self.action == 'escalate':
+            return [require_perm('tickets', 'escalate')()]
+        return [require_perm('tickets', 'view')()]
+
     def get_queryset(self):
-        user = self.request.user
         qs = Ticket.objects.select_related(
             'requester', 'department', 'assigned_to'
         ).prefetch_related('comments', 'attachments', 'participants__user', 'participants__invited_by')
-
-        # Invited/participated tickets visible to everyone regardless of role
-        invited_qs = qs.filter(
-            participants__user=user,
-            participants__status__in=(TicketParticipant.ACTIVE, TicketParticipant.CONTRIBUTED),
-        )
-
-        if user.is_admin:
-            return qs.all()
-        if user.is_manager_or_above:
-            return (qs.filter(department=user.department) | invited_qs).distinct()
-        if user.is_agent_or_above:
-            return (qs.filter(assigned_to=user) | qs.filter(department=user.department) | invited_qs).distinct()
-        return (qs.filter(requester=user) | invited_qs).distinct()
+        return visible_tickets_for(self.request.user, qs)
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
@@ -72,12 +110,12 @@ class TicketViewSet(viewsets.ModelViewSet):
                        ticket=ticket, request=self.request)
             send_ticket_notification.delay('ticket_assigned', ticket.id)
 
-    @action(detail=True, methods=['patch'], permission_classes=[IsAgentOrAbove])
+    @action(detail=True, methods=['patch'])
     def assign(self, request, pk=None):
         ticket = self.get_object()
-        if ticket.status == Ticket.ESCALATED and not request.user.is_manager_or_above:
+        if ticket.status == Ticket.ESCALATED and not request.user.has_perm_key('tickets', 'manage_escalated'):
             return Response(
-                {'error': 'This ticket is escalated. Only a manager or admin can reassign it.'},
+                {'error': 'This ticket is escalated. Only someone who can manage escalated tickets can reassign it.'},
                 status=403,
             )
         assigned_to_id = request.data.get('assigned_to')
@@ -87,8 +125,17 @@ class TicketViewSet(viewsets.ModelViewSet):
         old_dept = ticket.department
 
         if department_id:
+            from departments.models import Department
+            if not Department.objects.filter(pk=department_id, is_active=True).exists():
+                return Response({'error': 'Invalid or inactive department.'}, status=400)
             ticket.department_id = department_id
         if assigned_to_id:
+            from users.models import User as UserModel
+            assignee = UserModel.objects.filter(pk=assigned_to_id, is_active=True).select_related('role').first()
+            if not assignee:
+                return Response({'error': 'Invalid or inactive user.'}, status=400)
+            if not (assignee.is_admin or assignee.has_perm_key('tickets', 'claim')):
+                return Response({'error': 'This user is not eligible to be assigned tickets.'}, status=400)
             ticket.assigned_to_id = assigned_to_id
             if ticket.status == Ticket.NEW:
                 ticket.status = Ticket.ASSIGNED
@@ -107,21 +154,23 @@ class TicketViewSet(viewsets.ModelViewSet):
         """Agent escalates a ticket to the department manager."""
         ticket = self.get_object()
 
-        # Only agents (not managers/admins) escalate upward
-        if not request.user.is_agent_or_above:
-            return Response({'error': 'Permission denied.'}, status=403)
-        if request.user.is_manager_or_above:
-            return Response({'error': 'Managers and admins can handle this directly without escalating.'}, status=400)
+        # Managers/admins (who can manage escalated tickets directly) don't escalate upward
+        if request.user.has_perm_key('tickets', 'manage_escalated'):
+            return Response({'error': 'You can handle this directly without escalating.'}, status=400)
         if ticket.status == Ticket.ESCALATED:
             return Response({'error': 'Ticket is already escalated.'}, status=400)
 
-        # Determine the escalation target: department manager first, else any admin
+        # Determine the escalation target: department manager first, else anyone who manages escalated tickets
         manager = None
         if ticket.department_id and ticket.department.manager_id:
             manager = ticket.department.manager
         if not manager:
             from users.models import User
-            manager = User.objects.filter(role__in=('manager', 'admin'), is_active=True).first()
+            candidates = User.objects.filter(is_active=True).select_related('role')
+            manager = next(
+                (u for u in candidates if u.is_admin or u.has_perm_key('tickets', 'manage_escalated')),
+                None,
+            )
         if not manager:
             return Response({'error': 'No manager found to escalate to. Please configure a department manager.'}, status=400)
 
@@ -150,8 +199,8 @@ class TicketViewSet(viewsets.ModelViewSet):
         # Notify the manager directly (needs extra context not in the generic dispatcher)
         try:
             notify_ticket_escalated(ticket, escalated_by=escalated_by_name, reason=reason)
-        except Exception as e:
-            print(f'Escalation email error: {e}')
+        except Exception:
+            logger.exception('Escalation email error for ticket %s', ticket.ticket_number)
 
         return Response(TicketDetailSerializer(ticket).data)
 
@@ -159,8 +208,6 @@ class TicketViewSet(viewsets.ModelViewSet):
     def claim(self, request, pk=None):
         """Pool-mode: an agent self-assigns an unassigned ticket from the department queue."""
         ticket = self.get_object()
-        if not request.user.is_agent_or_above:
-            return Response({'error': 'Only agents can claim tickets.'}, status=403)
         if ticket.assigned_to_id:
             return Response({'error': 'This ticket is already assigned to someone.'}, status=400)
         ticket.assigned_to = request.user
@@ -194,12 +241,12 @@ class TicketViewSet(viewsets.ModelViewSet):
         send_ticket_notification.delay('status_updated', ticket.id)
         return Response(TicketDetailSerializer(ticket).data)
 
-    @action(detail=True, methods=['patch'], permission_classes=[IsAgentOrAbove])
+    @action(detail=True, methods=['patch'])
     def update_status(self, request, pk=None):
         ticket = self.get_object()
-        if ticket.status == Ticket.ESCALATED and not request.user.is_manager_or_above:
+        if ticket.status == Ticket.ESCALATED and not request.user.has_perm_key('tickets', 'manage_escalated'):
             return Response(
-                {'error': 'This ticket is escalated. Only a manager or admin can update its status.'},
+                {'error': 'This ticket is escalated. Only someone who can manage escalated tickets can update its status.'},
                 status=403,
             )
         new_status = request.data.get('status')
@@ -243,12 +290,17 @@ class TicketViewSet(viewsets.ModelViewSet):
             ticket=ticket, user=invitee,
             defaults={'invited_by': request.user, 'status': TicketParticipant.ACTIVE},
         )
-        if not created and participant.status == TicketParticipant.EXITED:
+        # Re-inviting someone who previously exited OR already contributed
+        # brings them back to Active - a re-invite should always mean "come
+        # back and look at this again", not silently no-op.
+        reactivated = False
+        if not created and participant.status != TicketParticipant.ACTIVE:
             participant.status = TicketParticipant.ACTIVE
             participant.invited_by = request.user
             participant.save(update_fields=['status', 'invited_by'])
+            reactivated = True
 
-        if created or participant.status == TicketParticipant.ACTIVE:
+        if created or reactivated:
             from notifications.email import _push
             _push(
                 invitee, ticket, 'ticket_assigned',
@@ -290,7 +342,7 @@ class TicketViewSet(viewsets.ModelViewSet):
         ticket = self.get_object()
         is_internal = request.data.get('is_internal', False)
 
-        if is_internal and not request.user.is_agent_or_above:
+        if is_internal and not request.user.has_perm_key('tickets', 'internal_note'):
             return Response({'error': 'Only agents can post internal notes.'}, status=403)
 
         serializer = CommentSerializer(data={
@@ -301,7 +353,7 @@ class TicketViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         comment = serializer.save(author=request.user, ticket=ticket)
 
-        if not ticket.first_response_at and request.user.is_agent_or_above:
+        if not ticket.first_response_at and request.user.has_perm_key('tickets', 'internal_note'):
             ticket.first_response_at = timezone.now()
             ticket.save(update_fields=['first_response_at'])
 
@@ -319,6 +371,10 @@ class TicketViewSet(viewsets.ModelViewSet):
         if not file:
             return Response({'error': 'No file provided.'}, status=400)
 
+        error = attachment_validation_error(file)
+        if error:
+            return Response({'error': error}, status=400)
+
         attachment = Attachment.objects.create(
             ticket=ticket,
             uploaded_by=request.user,
@@ -333,10 +389,36 @@ class TicketViewSet(viewsets.ModelViewSet):
         return Response(AttachmentSerializer(attachment).data, status=201)
 
 
+class AttachmentDownloadView(generics.GenericAPIView):
+    """Serves a ticket attachment's bytes directly, gated by the same
+    visibility rules as TicketViewSet - attachments can contain confidential
+    documents, so they are deliberately NOT reachable via a plain /media/
+    URL (see config/urls.py, which only publicly serves avatars/branding)."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        try:
+            attachment = Attachment.objects.select_related('ticket').get(pk=pk)
+        except Attachment.DoesNotExist:
+            raise NotFound('Attachment not found.')
+
+        if not visible_tickets_for(request.user).filter(pk=attachment.ticket_id).exists():
+            # 404, not 403 - don't confirm the attachment/ticket exists to
+            # someone who isn't authorized to see it.
+            raise NotFound('Attachment not found.')
+
+        return FileResponse(
+            attachment.file.open('rb'),
+            as_attachment=True,
+            filename=attachment.filename,
+            content_type=attachment.content_type or None,
+        )
+
+
 class TicketCategoryViewSet(viewsets.ModelViewSet):
     """
     GET  — all authenticated users (to populate the form dropdown)
-    POST/PATCH/DELETE — admins only
+    POST/PATCH/DELETE — requires settings.edit (managed from Settings -> Categories)
 
     Query params:
       ?active_only=true   — only return active categories
@@ -365,21 +447,19 @@ class TicketCategoryViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
             return [IsAuthenticated()]
-        from users.permissions import IsAdminUser
-        return [IsAdminUser()]
+        return [require_perm('settings', 'edit')()]
 
 
 class TicketFormConfigView(APIView):
-    """GET — anyone authenticated. PATCH — admins only."""
+    """GET — anyone authenticated. PATCH — requires settings.edit."""
 
     def get(self, request):
         cfg = TicketFormConfig.get_config()
         return Response(TicketFormConfigSerializer(cfg).data)
 
     def patch(self, request):
-        from users.permissions import IsAdminUser
-        if not request.user.is_admin:
-            return Response({'error': 'Admin access required.'}, status=403)
+        if not request.user.has_perm_key('settings', 'edit'):
+            return Response({'error': 'You do not have permission to edit settings.'}, status=403)
         cfg = TicketFormConfig.get_config()
         serializer = TicketFormConfigSerializer(cfg, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)

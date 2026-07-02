@@ -1,17 +1,22 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import api from '@/app/lib/api'
-import { SystemSettings, TicketFormConfig, TicketCategory } from '@/app/lib/types'
-import { useAuthStore } from '@/app/lib/store'
+import { SystemSettings, TicketFormConfig, TicketCategory, DirectoryTab, DirectoryField, PortalCategory, Role } from '@/app/lib/types'
+import { useAuthStore, useHasPerm } from '@/app/lib/store'
+import { LOGIN_ICON_MAP, LOGIN_ICON_OPTIONS, DEFAULT_LOGIN_HIGHLIGHTS, DEFAULT_LOGIN_HEADLINE } from '@/app/lib/loginIcons'
+import { RolesSection } from './RolesSection'
+import { MastersSection } from './MastersSection'
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { Button } from '@/app/components/ui/button'
 import { Input } from '@/app/components/ui/input'
 import { Textarea } from '@/app/components/ui/textarea'
 import {
-  Settings, Building2, Ticket, Mail, Layout, Tag,
+  Settings, Building2, Building, Ticket, Mail, Layout, Tag,
   CheckCircle2, Circle, Upload, X, Eye, EyeOff, Plus, Pencil, Trash2, GripVertical,
+  BookOpen, Columns3, Globe, Users as UsersIcon, Edit, ShieldCheck, Lock, UploadCloud,
 } from 'lucide-react'
+import { DepartmentsSection } from './DepartmentsSection'
 
 // ─── tiny local Toggle ───────────────────────────────────────────────────────
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
@@ -55,6 +60,11 @@ const TABS = [
   { id: 'email', label: 'Email', icon: Mail },
   { id: 'form_fields', label: 'Form Fields', icon: Settings },
   { id: 'categories', label: 'Categories', icon: Tag },
+  { id: 'departments', label: 'Departments', icon: Building },
+  { id: 'directory', label: 'Directory', icon: BookOpen },
+  { id: 'masters', label: 'Masters', icon: UploadCloud },
+  { id: 'access', label: 'Access Control', icon: ShieldCheck },
+  { id: 'roles', label: 'Roles', icon: Lock },
 ]
 
 const FORM_FIELDS = [
@@ -68,6 +78,7 @@ const DEFAULT_SETTINGS: Partial<SystemSettings> = {
   company_name: '', company_tagline: '', company_email: '',
   company_phone: '', company_website: '', company_address: '',
   portal_name: '', portal_welcome: '', support_hours: '',
+  login_headline: DEFAULT_LOGIN_HEADLINE, login_highlights: DEFAULT_LOGIN_HIGHLIGHTS,
   primary_color: '#1e3a5f',
   ticket_prefix: 'TKT', ticket_separator: '-',
   ticket_include_year: true, ticket_year_format: 'YYYY',
@@ -77,8 +88,10 @@ const DEFAULT_SETTINGS: Partial<SystemSettings> = {
 
 export default function SettingsPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const user = useAuthStore((s) => s.user)
-  const [activeTab, setActiveTab] = useState('organisation')
+  const canView = useHasPerm('settings', 'view')
+  const [activeTab, setActiveTab] = useState(() => searchParams.get('tab') || 'organisation')
   const [settings, setSettings] = useState<Partial<SystemSettings>>(DEFAULT_SETTINGS)
   const [formConfig, setFormConfig] = useState<TicketFormConfig | null>(null)
   const [categories, setCategories] = useState<TicketCategory[]>([])
@@ -100,11 +113,30 @@ export default function SettingsPage() {
   const [testEmailLoading, setTestEmailLoading] = useState(false)
   const [testEmailResult, setTestEmailResult] = useState<{ success: boolean; message?: string; error?: string } | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // ── Directory masters (tabs, fields, portal categories) ──
+  const [dirTabs, setDirTabs] = useState<DirectoryTab[]>([])
+  const [newDirTabName, setNewDirTabName] = useState('')
+  const [renamingDirTabId, setRenamingDirTabId] = useState<number | null>(null)
+  const [renameDirTabValue, setRenameDirTabValue] = useState('')
+  const [expandedDirTabId, setExpandedDirTabId] = useState<number | null>(null)
+  const [newFieldName, setNewFieldName] = useState('')
+  const [renamingFieldId, setRenamingFieldId] = useState<number | null>(null)
+  const [renameFieldValue, setRenameFieldValue] = useState('')
+  const [dirSaving, setDirSaving] = useState(false)
+  const [dirError, setDirError] = useState('')
+
+  const [portalCategories, setPortalCategories] = useState<PortalCategory[]>([])
+  const [newPortalCatName, setNewPortalCatName] = useState('')
+  const [allRoles, setAllRoles] = useState<Role[]>([])
+  const [accessCategoryId, setAccessCategoryId] = useState<number | null>(null)
+  const [accessSelectedIds, setAccessSelectedIds] = useState<number[]>([])
+
   const logoRef = useRef<HTMLInputElement>(null)
   const faviconRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (user && user.role !== 'admin') { router.push('/dashboard'); return }
+    if (user && !canView) { router.push('/dashboard'); return }
     Promise.all([
       api.get('/branding/'),
       api.get('/tickets/form-config/'),
@@ -121,7 +153,146 @@ export default function SettingsPage() {
       setAllDepartments(dRes.data.results ?? dRes.data)
       setLoading(false)
     })
-  }, [user, router])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, router, canView])
+
+  const fetchDirTabs = async () => {
+    const res = await api.get('/directory/tabs/')
+    setDirTabs(res.data.results ?? res.data)
+  }
+
+  const fetchPortalCategories = async () => {
+    const res = await api.get('/directory/portal-categories/')
+    setPortalCategories(res.data.results ?? res.data)
+  }
+
+  useEffect(() => {
+    if (activeTab === 'directory') {
+      fetchDirTabs()
+    }
+    if (activeTab === 'access' || activeTab === 'roles') {
+      fetchAllRoles()
+    }
+    if (activeTab === 'access') {
+      fetchPortalCategories()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab])
+
+  const fetchAllRoles = async () => {
+    const res = await api.get('/auth/roles/')
+    setAllRoles(res.data.results ?? res.data)
+  }
+
+  const expandedTab = dirTabs.find((t) => t.id === expandedDirTabId) ?? null
+
+  const handleAddDirTab = async () => {
+    if (!newDirTabName.trim()) return
+    setDirSaving(true)
+    try {
+      const res = await api.post('/directory/tabs/', { name: newDirTabName.trim(), order: dirTabs.length })
+      setNewDirTabName('')
+      await fetchDirTabs()
+      setExpandedDirTabId(res.data.id)
+    } catch (e: any) {
+      setDirError(e.response?.data?.name?.[0] || 'Could not add tab')
+    } finally {
+      setDirSaving(false)
+    }
+  }
+
+  const startRenameDirTab = (tab: DirectoryTab) => {
+    setRenamingDirTabId(tab.id)
+    setRenameDirTabValue(tab.name)
+  }
+
+  const saveRenameDirTab = async () => {
+    if (renamingDirTabId === null || !renameDirTabValue.trim()) { setRenamingDirTabId(null); return }
+    await api.patch(`/directory/tabs/${renamingDirTabId}/`, { name: renameDirTabValue.trim() })
+    setRenamingDirTabId(null)
+    fetchDirTabs()
+  }
+
+  const deleteDirTab = async (id: number) => {
+    if (!confirm('Delete this tab? Its fields and entries will be deleted too.')) return
+    await api.delete(`/directory/tabs/${id}/`)
+    if (expandedDirTabId === id) setExpandedDirTabId(null)
+    fetchDirTabs()
+  }
+
+  const handleAddField = async () => {
+    if (!newFieldName.trim() || expandedDirTabId === null) return
+    setDirSaving(true)
+    try {
+      await api.post('/directory/fields/', { tab: expandedDirTabId, name: newFieldName.trim(), order: expandedTab?.custom_fields.length ?? 0 })
+      setNewFieldName('')
+      fetchDirTabs()
+    } catch (e: any) {
+      setDirError(e.response?.data?.name?.[0] || 'Could not add detail')
+    } finally {
+      setDirSaving(false)
+    }
+  }
+
+  const startRenameField = (field: DirectoryField) => {
+    setRenamingFieldId(field.id)
+    setRenameFieldValue(field.name)
+  }
+
+  const saveRenameField = async () => {
+    if (renamingFieldId === null || !renameFieldValue.trim()) { setRenamingFieldId(null); return }
+    await api.patch(`/directory/fields/${renamingFieldId}/`, { name: renameFieldValue.trim() })
+    setRenamingFieldId(null)
+    fetchDirTabs()
+  }
+
+  const deleteField = async (id: number) => {
+    if (!confirm('Delete this detail? Its values will be removed from every entry in this tab.')) return
+    await api.delete(`/directory/fields/${id}/`)
+    fetchDirTabs()
+  }
+
+  const handleAddPortalCategory = async () => {
+    if (!newPortalCatName.trim()) return
+    setDirSaving(true)
+    try {
+      await api.post('/directory/portal-categories/', { name: newPortalCatName.trim(), order: portalCategories.length })
+      setNewPortalCatName('')
+      fetchPortalCategories()
+    } catch (e: any) {
+      setDirError(e.response?.data?.name?.[0] || 'Could not add category')
+    } finally {
+      setDirSaving(false)
+    }
+  }
+
+  const deletePortalCategory = async (id: number) => {
+    if (!confirm('Delete this category? Portals in it will become uncategorised.')) return
+    await api.delete(`/directory/portal-categories/${id}/`)
+    if (accessCategoryId === id) setAccessCategoryId(null)
+    fetchPortalCategories()
+  }
+
+  const openAccessEditor = (category: PortalCategory) => {
+    setAccessCategoryId(category.id)
+    setAccessSelectedIds(category.allowed_roles)
+  }
+
+  const toggleAccessRole = (roleId: number) => {
+    setAccessSelectedIds((prev) => (prev.includes(roleId) ? prev.filter((id) => id !== roleId) : [...prev, roleId]))
+  }
+
+  const saveAccess = async () => {
+    if (accessCategoryId === null) return
+    setDirSaving(true)
+    try {
+      await api.patch(`/directory/portal-categories/${accessCategoryId}/`, { allowed_roles: accessSelectedIds })
+      setAccessCategoryId(null)
+      fetchPortalCategories()
+    } finally {
+      setDirSaving(false)
+    }
+  }
 
   // Live-preview ticket number as user types
   useEffect(() => {
@@ -255,7 +426,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -273,7 +444,7 @@ export default function SettingsPage() {
               <CheckCircle2 className="w-4 h-4" /> Saved
             </span>
           )}
-          {activeTab !== 'categories' && (
+          {activeTab !== 'categories' && activeTab !== 'directory' && activeTab !== 'access' && activeTab !== 'departments' && (
             <Button onClick={handleSave} loading={saving}>Save All Changes</Button>
           )}
         </div>
@@ -417,6 +588,93 @@ export default function SettingsPage() {
               value={settings.support_hours || ''}
               onChange={(e) => set({ support_hours: e.target.value })}
             />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Login Page ── */}
+      {activeTab === 'portal' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Login Page</CardTitle>
+            <p className="text-xs text-gray-400 mt-1">Customise the hero headline and highlight bullets shown on the login screen.</p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Textarea
+              label="Headline"
+              placeholder={DEFAULT_LOGIN_HEADLINE}
+              rows={2}
+              value={settings.login_headline ?? ''}
+              onChange={(e) => set({ login_headline: e.target.value })}
+            />
+            <p className="text-xs text-gray-400 -mt-2">Use a line break for a two-line heading.</p>
+
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-gray-700">Highlights</label>
+              {(settings.login_highlights?.length ? settings.login_highlights : DEFAULT_LOGIN_HIGHLIGHTS).map((h, i) => {
+                const highlights = settings.login_highlights?.length ? settings.login_highlights : DEFAULT_LOGIN_HIGHLIGHTS
+                return (
+                  <div key={i} className="flex items-center gap-2">
+                    <select
+                      value={h.icon}
+                      onChange={(e) => {
+                        const next = highlights.map((x, j) => (j === i ? { ...x, icon: e.target.value } : x))
+                        set({ login_highlights: next })
+                      }}
+                      className="rounded-lg border border-gray-300 px-2 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-900"
+                    >
+                      {LOGIN_ICON_OPTIONS.map((key) => (
+                        <option key={key} value={key}>{key}</option>
+                      ))}
+                    </select>
+                    <input
+                      className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-900"
+                      value={h.text}
+                      onChange={(e) => {
+                        const next = highlights.map((x, j) => (j === i ? { ...x, text: e.target.value } : x))
+                        set({ login_highlights: next })
+                      }}
+                    />
+                    <button
+                      onClick={() => set({ login_highlights: highlights.filter((_, j) => j !== i) })}
+                      className="p-2 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 flex-shrink-0"
+                      title="Remove"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                )
+              })}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const highlights = settings.login_highlights?.length ? settings.login_highlights : DEFAULT_LOGIN_HIGHLIGHTS
+                  set({ login_highlights: [...highlights, { icon: 'star', text: '' }] })
+                }}
+              >
+                <Plus className="w-4 h-4 mr-1" /> Add Highlight
+              </Button>
+            </div>
+
+            {/* Live preview */}
+            <div className="rounded-xl p-5 text-white" style={{ backgroundColor: settings.primary_color || '#1e3a5f' }}>
+              <h3 className="text-lg font-bold leading-tight mb-2">
+                {(settings.login_headline || DEFAULT_LOGIN_HEADLINE).split('\n').map((line, i) => (
+                  <span key={i}>{line}{i === 0 && <br />}</span>
+                ))}
+              </h3>
+              <div className="space-y-2 mt-3">
+                {(settings.login_highlights?.length ? settings.login_highlights : DEFAULT_LOGIN_HIGHLIGHTS).map((h, i) => {
+                  const Icon = LOGIN_ICON_MAP[h.icon] || LOGIN_ICON_MAP.star
+                  return (
+                    <div key={i} className="flex items-center gap-2 text-sm text-white/80">
+                      <Icon className="w-3.5 h-3.5 flex-shrink-0" /> {h.text || <span className="italic text-white/40">(empty)</span>}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -886,6 +1144,180 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {activeTab === 'departments' && <DepartmentsSection />}
+
+      {activeTab === 'directory' && (
+        <div className="space-y-6">
+          {dirError && (
+            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{dirError}</p>
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Directory Tabs &amp; Details</CardTitle>
+              <p className="text-xs text-gray-400 mt-1">
+                Create as many tabs as you need, named however makes sense for your organisation. Each tab has its
+                own set of details (columns) that you define, add to, or remove — nothing is fixed, including "Name".
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                <Input placeholder="New tab name (e.g. Head Office)" value={newDirTabName} onChange={(e) => setNewDirTabName(e.target.value)} />
+                <Button onClick={handleAddDirTab} loading={dirSaving}>Add Tab</Button>
+              </div>
+
+              <div className="divide-y divide-gray-100 border border-gray-200 rounded-lg">
+                {dirTabs.length === 0 && <p className="px-4 py-6 text-center text-gray-400 text-sm">No tabs yet.</p>}
+                {dirTabs.map((t) => (
+                  <div key={t.id}>
+                    <div className="flex items-center justify-between px-4 py-2.5">
+                      {renamingDirTabId === t.id ? (
+                        <div className="flex items-center gap-2 flex-1">
+                          <Input value={renameDirTabValue} onChange={(e) => setRenameDirTabValue(e.target.value)} autoFocus />
+                          <Button size="sm" onClick={saveRenameDirTab}>Save</Button>
+                          <Button size="sm" variant="outline" onClick={() => setRenamingDirTabId(null)}>Cancel</Button>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => setExpandedDirTabId(expandedDirTabId === t.id ? null : t.id)}
+                            className="text-sm text-gray-800 hover:text-blue-900 text-left"
+                          >
+                            {t.name} <span className="text-gray-400">({t.entry_count} entries, {t.custom_fields.length} details)</span>
+                          </button>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => setExpandedDirTabId(expandedDirTabId === t.id ? null : t.id)} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500" title="Manage details">
+                              <Columns3 className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => startRenameDirTab(t)} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500" title="Rename">
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button onClick={() => deleteDirTab(t.id)} className="p-1.5 rounded-md hover:bg-red-50 text-gray-400 hover:text-red-500" title="Delete">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {expandedDirTabId === t.id && (
+                      <div className="px-4 pb-4 bg-gray-50">
+                        <p className="text-xs text-gray-400 mb-2">Details for "{t.name}":</p>
+                        <div className="flex gap-2 mb-2">
+                          <Input placeholder="New detail name (e.g. Phone)" value={newFieldName} onChange={(e) => setNewFieldName(e.target.value)} />
+                          <Button size="sm" onClick={handleAddField} loading={dirSaving}>Add</Button>
+                        </div>
+                        <div className="divide-y divide-gray-100 border border-gray-200 rounded-lg bg-white">
+                          {t.custom_fields.length === 0 && <p className="px-3 py-4 text-center text-gray-400 text-sm">No details yet for this tab.</p>}
+                          {t.custom_fields.map((f) => (
+                            <div key={f.id} className="flex items-center justify-between px-3 py-2">
+                              {renamingFieldId === f.id ? (
+                                <div className="flex items-center gap-2 flex-1">
+                                  <Input value={renameFieldValue} onChange={(e) => setRenameFieldValue(e.target.value)} autoFocus />
+                                  <Button size="sm" onClick={saveRenameField}>Save</Button>
+                                  <Button size="sm" variant="outline" onClick={() => setRenamingFieldId(null)}>Cancel</Button>
+                                </div>
+                              ) : (
+                                <>
+                                  <span className="text-sm text-gray-700">{f.name}</span>
+                                  <div className="flex items-center gap-1">
+                                    <button onClick={() => startRenameField(f)} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500" title="Rename">
+                                      <Edit className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button onClick={() => deleteField(f.id)} className="p-1.5 rounded-md hover:bg-red-50 text-gray-400 hover:text-red-500" title="Delete">
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {activeTab === 'masters' && <MastersSection />}
+
+      {activeTab === 'access' && (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Portal Categories Access</CardTitle>
+              <p className="text-xs text-gray-400 mt-1">
+                Group Portals links into categories, and optionally restrict a category to specific roles. Categories
+                themselves are also editable from Settings → Directory. (User role assignment is on the Users page.)
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                <Input placeholder="New category name" value={newPortalCatName} onChange={(e) => setNewPortalCatName(e.target.value)} />
+                <Button onClick={handleAddPortalCategory} loading={dirSaving}>Add</Button>
+              </div>
+              <div className="divide-y divide-gray-100 border border-gray-200 rounded-lg">
+                {portalCategories.length === 0 && <p className="px-4 py-6 text-center text-gray-400 text-sm">No categories yet.</p>}
+                {portalCategories.map((c) => (
+                  <div key={c.id} className="px-4 py-2.5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-sm text-gray-800">{c.name} <span className="text-gray-400">({c.portal_count})</span></span>
+                        <div className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                          {c.allowed_roles.length === 0 ? (
+                            <><Globe className="w-3 h-3" /> Visible to everyone</>
+                          ) : (
+                            <><UsersIcon className="w-3 h-3" /> Restricted to {c.allowed_role_names.join(', ')}</>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => openAccessEditor(c)} className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500" title="Manage access">
+                          <UsersIcon className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => deletePortalCategory(c.id)} className="p-1.5 rounded-md hover:bg-red-50 text-gray-400 hover:text-red-500" title="Delete">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {accessCategoryId === c.id && (
+                      <div className="mt-3 p-3 bg-gray-50 rounded-lg space-y-2">
+                        <p className="text-xs text-gray-500">Leave every role unchecked to keep this category visible to all users.</p>
+                        <div className="max-h-48 overflow-y-auto space-y-1">
+                          {allRoles.map((r) => (
+                            <label key={r.id} className="flex items-center gap-2 text-sm text-gray-700 px-1 py-1 hover:bg-gray-100 rounded cursor-pointer capitalize">
+                              <input
+                                type="checkbox"
+                                checked={accessSelectedIds.includes(r.id)}
+                                onChange={() => toggleAccessRole(r.id)}
+                              />
+                              {r.name.replace('_', ' ')}
+                            </label>
+                          ))}
+                        </div>
+                        <div className="flex justify-end gap-2 pt-1">
+                          <Button variant="outline" size="sm" onClick={() => setAccessCategoryId(null)}>Cancel</Button>
+                          <Button size="sm" onClick={saveAccess} loading={dirSaving}>Save Access</Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {activeTab === 'roles' && (
+        <RolesSection roles={allRoles} onRolesChange={setAllRoles} currentUserId={user?.id ?? null} />
       )}
 
       {/* ── Category Modal ── */}
