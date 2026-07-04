@@ -105,6 +105,7 @@ export interface SystemSettings {
   support_hours: string
   login_headline: string
   login_highlights: { icon: string; text: string }[]
+  powered_by_text: string
   // Appearance
   primary_color: string
   favicon: string | null

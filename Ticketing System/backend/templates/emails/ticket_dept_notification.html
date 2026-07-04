@@ -4,12 +4,21 @@
 <div class="ticket-box">
   <p><strong>Ticket Number:</strong> {{ ticket.ticket_number }}</p>
   <p><strong>Subject:</strong> {{ ticket.title }}</p>
-  <p><strong>Category:</strong> {{ ticket.get_category_display }}</p>
+  {% if category_display %}
+  <p><strong>Category:</strong> {{ category_display }}</p>
+  {% endif %}
   <p><strong>Priority:</strong> {{ ticket.get_priority_display }}</p>
   <p><strong>Submitted By:</strong> {{ ticket.requester.full_name }}</p>
+  {% if ticket.location %}
+  <p><strong>Location:</strong> {{ ticket.location }}</p>
+  {% endif %}
   {% if ticket.sla_response_due %}
   <p><strong>Response Due:</strong> {{ ticket.sla_response_due|date:"N j, Y g:i A" }}</p>
   {% endif %}
+</div>
+<p><strong>Description:</strong></p>
+<div class="ticket-box">
+  <p>{{ ticket.description|linebreaksbr }}</p>
 </div>
 <a href="{{ frontend_url }}/tickets/{{ ticket.id }}" class="btn">View & Assign Ticket</a>
 {% endblock %}

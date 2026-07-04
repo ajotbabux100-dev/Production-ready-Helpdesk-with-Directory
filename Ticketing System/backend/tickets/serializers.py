@@ -59,9 +59,18 @@ class AttachmentSerializer(serializers.ModelSerializer):
 
 
 class CommentAttachmentSerializer(serializers.ModelSerializer):
+    # Same reasoning as AttachmentSerializer.download_url above - don't expose
+    # the raw /media/ file path, route through the permission-checked
+    # CommentAttachmentDownloadView instead.
+    download_url = serializers.SerializerMethodField()
+
     class Meta:
         model = CommentAttachment
-        fields = ['id', 'file', 'filename', 'file_size', 'content_type', 'uploaded_at']
+        fields = ['id', 'download_url', 'filename', 'file_size', 'content_type', 'uploaded_at', 'uploaded_by']
+        read_only_fields = ['uploaded_by', 'uploaded_at']
+
+    def get_download_url(self, obj):
+        return f'/tickets/comment-attachments/{obj.id}/download/'
 
 
 class CommentSerializer(serializers.ModelSerializer):
@@ -143,7 +152,11 @@ class TicketDetailSerializer(serializers.ModelSerializer):
 class TicketCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ticket
-        fields = ['title', 'description', 'category', 'priority', 'location', 'department']
+        # 'id' must be included so the frontend's create-ticket flow can read
+        # res.data.id to upload attachments right after creation - without it
+        # every add_attachment call there was silently hitting /tickets/undefined/.
+        fields = ['id', 'title', 'description', 'category', 'priority', 'location', 'department']
+        read_only_fields = ['id']
 
     def validate(self, attrs):
         cfg = TicketFormConfig.get_config()

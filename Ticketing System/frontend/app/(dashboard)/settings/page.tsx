@@ -63,7 +63,7 @@ const TABS = [
   { id: 'departments', label: 'Departments', icon: Building },
   { id: 'directory', label: 'Directory', icon: BookOpen },
   { id: 'masters', label: 'Masters', icon: UploadCloud },
-  { id: 'access', label: 'Access Control', icon: ShieldCheck },
+  { id: 'access', label: 'Portal Category Access', icon: ShieldCheck },
   { id: 'roles', label: 'Roles', icon: Lock },
 ]
 
@@ -79,6 +79,7 @@ const DEFAULT_SETTINGS: Partial<SystemSettings> = {
   company_phone: '', company_website: '', company_address: '',
   portal_name: '', portal_welcome: '', support_hours: '',
   login_headline: DEFAULT_LOGIN_HEADLINE, login_highlights: DEFAULT_LOGIN_HIGHLIGHTS,
+  powered_by_text: '',
   primary_color: '#1e3a5f',
   ticket_prefix: 'TKT', ticket_separator: '-',
   ticket_include_year: true, ticket_year_format: 'YYYY',
@@ -108,6 +109,7 @@ export default function SettingsPage() {
   const [faviconPreview, setFaviconPreview] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState('')
   const [showEmailPwd, setShowEmailPwd] = useState(false)
   const [testEmailRecipient, setTestEmailRecipient] = useState('')
   const [testEmailLoading, setTestEmailLoading] = useState(false)
@@ -392,24 +394,41 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     setSaving(true)
+    setSaveError('')
     try {
       // Save branding settings
       const fd = new FormData()
-      const skip = new Set(['id', 'company_logo', 'company_logo_url', 'favicon', 'favicon_url', 'ticket_number_preview'])
+      // email_host_password is server-side read-only (it returns a masked
+      // placeholder on GET) - the actual writable field is
+      // email_host_password_write. Sending it under its own key was silently
+      // discarded by the serializer, so the SMTP password never saved.
+      const skip = new Set(['id', 'company_logo', 'company_logo_url', 'favicon', 'favicon_url', 'ticket_number_preview', 'email_host_password'])
       for (const [k, v] of Object.entries(settings)) {
         if (skip.has(k)) continue
-        fd.append(k, v === null || v === undefined ? '' : String(v))
+        if (v === null || v === undefined) { fd.append(k, ''); continue }
+        // Object/array fields (e.g. login_highlights) must round-trip as JSON -
+        // String(v) on an array/object produces "[object Object]" garbage,
+        // which the backend then rejects, silently failing the whole save
+        // (including any logo file bundled in the same request).
+        fd.append(k, typeof v === 'object' ? JSON.stringify(v) : String(v))
       }
+      fd.append('email_host_password_write', settings.email_host_password || '')
       if (logoFile) fd.append('company_logo', logoFile)
       if (faviconFile) fd.append('favicon', faviconFile)
       const bRes = await api.patch('/branding/', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
       setSettings(bRes.data)
       setPreview(bRes.data.ticket_number_preview)
+      setLogoFile(null)
+      setFaviconFile(null)
 
       // Save form config
       if (formConfig) await api.patch('/tickets/form-config/', formConfig)
 
       setSaved(activeTab)
+    } catch (err: any) {
+      const data = err.response?.data
+      const msg = data && typeof data === 'object' ? Object.values(data).flat().join(' ') : 'Save failed.'
+      setSaveError(msg)
     } finally {
       setSaving(false)
     }
@@ -439,7 +458,10 @@ export default function SettingsPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          {saved && (
+          {saveError && (
+            <span className="text-sm text-red-600 font-medium max-w-xs truncate" title={saveError}>{saveError}</span>
+          )}
+          {saved && !saveError && (
             <span className="text-sm text-green-600 font-medium flex items-center gap-1">
               <CheckCircle2 className="w-4 h-4" /> Saved
             </span>
@@ -501,6 +523,7 @@ export default function SettingsPage() {
                       </button>
                     )}
                     <p className="text-xs text-gray-400">PNG, JPG, SVG — max 2 MB. Shown in sidebar and emails.</p>
+                    <p className="text-xs text-gray-400">Recommended: 512×512px, square, transparent background.</p>
                   </div>
                 </div>
               </div>
@@ -588,6 +611,13 @@ export default function SettingsPage() {
               value={settings.support_hours || ''}
               onChange={(e) => set({ support_hours: e.target.value })}
             />
+            <Input
+              label="Powered By Text"
+              placeholder="e.g. Powered by GSH & ISH OMAN IT"
+              value={settings.powered_by_text ?? ''}
+              onChange={(e) => set({ powered_by_text: e.target.value })}
+            />
+            <p className="text-xs text-gray-400 -mt-2">Shown in the sidebar footer and on the login page. Leave blank to hide.</p>
           </CardContent>
         </Card>
       )}

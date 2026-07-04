@@ -5,12 +5,24 @@
 <div class="ticket-box">
   <p><strong>Ticket Number:</strong> {{ ticket.ticket_number }}</p>
   <p><strong>Subject:</strong> {{ ticket.title }}</p>
-  <p><strong>Category:</strong> {{ ticket.get_category_display }}</p>
+  {% if category_display %}
+  <p><strong>Category:</strong> {{ category_display }}</p>
+  {% endif %}
   <p><strong>Priority:</strong> {{ ticket.get_priority_display }}</p>
   <p><strong>Status:</strong> {{ ticket.get_status_display }}</p>
+  {% if ticket.department %}
+  <p><strong>Department:</strong> {{ ticket.department.name }}</p>
+  {% endif %}
+  {% if ticket.location %}
+  <p><strong>Location:</strong> {{ ticket.location }}</p>
+  {% endif %}
   {% if ticket.sla_resolution_due %}
   <p><strong>Expected Resolution:</strong> {{ ticket.sla_resolution_due|date:"N j, Y g:i A" }}</p>
   {% endif %}
+</div>
+<p><strong>Description:</strong></p>
+<div class="ticket-box">
+  <p>{{ ticket.description|linebreaksbr }}</p>
 </div>
 <a href="{{ frontend_url }}/tickets/{{ ticket.id }}" class="btn">View Ticket</a>
 <p>If you need to add more information or attachments, please log in to the portal and update your ticket.</p>

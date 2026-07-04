@@ -101,11 +101,15 @@ export default function TicketDetailPage() {
   const [loading, setLoading] = useState(true)
   const [comment, setComment] = useState('')
   const [isInternal, setIsInternal] = useState(false)
+  const [commentFiles, setCommentFiles] = useState<File[]>([])
   const [commentLoading, setCommentLoading] = useState(false)
+  const [commentError, setCommentError] = useState('')
+  const [statusFiles, setStatusFiles] = useState<File[]>([])
   const [agents, setAgents] = useState<User[]>([])
   const [selectedAgent, setSelectedAgent] = useState('')
   const [selectedStatus, setSelectedStatus] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+  const [statusError, setStatusError] = useState('')
   const [escalateOpen, setEscalateOpen] = useState(false)
   const [escalateReason, setEscalateReason] = useState('')
   const [escalateError, setEscalateError] = useState('')
@@ -126,6 +130,14 @@ export default function TicketDetailPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  // Replies are locked on a resolved/closed ticket - default staff into
+  // Internal Note mode so the toggle isn't left on a disabled "Reply".
+  useEffect(() => {
+    if (ticket && (ticket.status === 'resolved' || ticket.status === 'closed')) {
+      setIsInternal(true)
+    }
+  }, [ticket?.status])
 
   const fetchTicket = async () => {
     try {
@@ -201,8 +213,15 @@ export default function TicketDetailPage() {
     e.preventDefault()
     if (!comment.trim()) return
     setCommentLoading(true)
+    setCommentError('')
     try {
-      await api.post(`/tickets/${id}/add_comment/`, { body: comment, is_internal: isInternal })
+      const fd = new FormData()
+      fd.append('body', comment)
+      fd.append('is_internal', String(isInternal))
+      commentFiles.forEach((f) => fd.append('files', f))
+      await api.post(`/tickets/${id}/add_comment/`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
       // Invite any @mentioned users who aren't already ACTIVE participants -
       // someone who exited or already contributed should be re-invited (and
       // re-notified), not silently skipped.
@@ -210,18 +229,36 @@ export default function TicketDetailPage() {
       const toInvite = pendingMentions.filter((m) => !activeParticipantIds.includes(m.id))
       await Promise.allSettled(toInvite.map((m) => api.post(`/tickets/${id}/invite/`, { user_id: m.id })))
       setComment('')
+      setCommentFiles([])
       setPendingMentions([])
       fetchTicket()
+    } catch (err: any) {
+      setCommentError(err.response?.data?.error || 'Failed to post.')
     } finally { setCommentLoading(false) }
   }
 
-  const updateStatus = async () => {
-    if (!selectedStatus || selectedStatus === ticket?.status) return
+  const applyStatus = async (status: string) => {
     setActionLoading(true)
+    setStatusError('')
     try {
-      await api.patch(`/tickets/${id}/update_status/`, { status: selectedStatus })
+      await api.patch(`/tickets/${id}/update_status/`, { status })
+      for (const file of statusFiles) {
+        const fd = new FormData()
+        fd.append('file', file)
+        await api.post(`/tickets/${id}/add_attachment/`, fd, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+      }
+      setStatusFiles([])
       fetchTicket()
+    } catch (err: any) {
+      setStatusError(err.response?.data?.error || 'Failed to update status.')
     } finally { setActionLoading(false) }
+  }
+
+  const updateStatus = () => {
+    if (!selectedStatus || selectedStatus === ticket?.status) return
+    applyStatus(selectedStatus)
   }
 
   const assignAgent = async () => {
@@ -236,9 +273,12 @@ export default function TicketDetailPage() {
 
   const reopenTicket = async () => {
     setActionLoading(true)
+    setStatusError('')
     try {
       await api.post(`/tickets/${id}/reopen/`)
       fetchTicket()
+    } catch (err: any) {
+      setStatusError(err.response?.data?.error || 'Failed to reopen ticket.')
     } finally { setActionLoading(false) }
   }
 
@@ -289,6 +329,7 @@ export default function TicketDetailPage() {
   if (!ticket) return null
 
   const visibleComments = ticket.comments.filter((c) => !c.is_internal || isStaff)
+  const isTicketLocked = ticket.status === 'resolved' || ticket.status === 'closed'
   const activeParticipants = (ticket.participants ?? []).filter((p) => p.status !== 'exited')
   const myParticipation = (ticket.participants ?? []).find((p) => p.user === user?.id && p.status !== 'exited')
 
@@ -431,6 +472,22 @@ export default function TicketDetailPage() {
                       }`}>
                         <p className="whitespace-pre-wrap">{c.body}</p>
                       </div>
+                      {c.attachments.length > 0 && (
+                        <div className="mt-2 space-y-1.5">
+                          {c.attachments.map((att) => (
+                            <button
+                              key={att.id}
+                              type="button"
+                              onClick={() => downloadFile(att.download_url, att.filename)}
+                              className="w-full flex items-center gap-2 py-1.5 px-2.5 rounded-lg border border-gray-100 hover:border-blue-200 hover:bg-blue-50 transition-colors group text-left"
+                            >
+                              <Paperclip className="w-3.5 h-3.5 text-gray-400 group-hover:text-blue-600 flex-shrink-0" />
+                              <span className="text-xs text-gray-600 group-hover:text-blue-700 flex-1 truncate">{att.filename}</span>
+                              <span className="text-xs text-gray-400">{(att.file_size / 1024).toFixed(1)} KB</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -445,14 +502,26 @@ export default function TicketDetailPage() {
             )}
 
             {/* Comment form */}
+            {isTicketLocked && !isStaff ? (
+              <div className="mt-5 border-t border-gray-100 pt-5 print:hidden">
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+                  <p className="text-xs text-gray-500">
+                    This ticket is {ticket.status}. Reopen it to add a reply.
+                  </p>
+                </div>
+              </div>
+            ) : (
             <form onSubmit={submitComment} className="mt-5 border-t border-gray-100 pt-5 print:hidden">
               {isStaff && (
                 <div className="flex gap-3 mb-3">
                   <button
                     type="button"
-                    onClick={() => setIsInternal(false)}
+                    onClick={() => !isTicketLocked && setIsInternal(false)}
+                    disabled={isTicketLocked}
+                    title={isTicketLocked ? `This ticket is ${ticket.status}. Reopen it to add a reply.` : undefined}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                      !isInternal ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
+                      isTicketLocked ? 'bg-white text-gray-300 border-gray-100 cursor-not-allowed'
+                      : !isInternal ? 'bg-blue-900 text-white border-blue-900' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'
                     }`}
                   >
                     <MessageSquare className="w-3.5 h-3.5" /> Reply
@@ -557,6 +626,42 @@ export default function TicketDetailPage() {
                 />
               </div>
 
+              {/* Attach files */}
+              <div className="mt-2 space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer w-fit">
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.log,.zip"
+                    onChange={(e) => {
+                      const newFiles = Array.from(e.target.files || [])
+                      setCommentFiles((prev) => [...prev, ...newFiles])
+                      e.target.value = ''
+                    }}
+                  />
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-gray-500 hover:bg-gray-50 border border-gray-200">
+                    <Paperclip className="w-3.5 h-3.5" /> Attach files
+                  </div>
+                </label>
+                {commentFiles.length > 0 && (
+                  <div className="space-y-1.5">
+                    {commentFiles.map((file, i) => (
+                      <div key={i} className="flex items-center justify-between py-1.5 px-2.5 bg-gray-50 rounded-lg text-xs">
+                        <span className="text-gray-600 truncate">{file.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => setCommentFiles((prev) => prev.filter((_, j) => j !== i))}
+                          className="ml-2 text-gray-400 hover:text-red-500"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Pending @mention pills */}
               {pendingMentions.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-2">
@@ -580,13 +685,18 @@ export default function TicketDetailPage() {
                 </div>
               )}
 
+              {commentError && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5 mt-2">{commentError}</p>
+              )}
+
               <div className="flex justify-end mt-2">
-                <Button type="submit" loading={commentLoading} size="sm" className="gap-1.5">
+                <Button type="submit" loading={commentLoading} size="sm" className="gap-1.5" disabled={isTicketLocked && !isInternal}>
                   <Send className="w-3.5 h-3.5" />
                   {isInternal ? 'Add Note' : 'Post Reply'}
                 </Button>
               </div>
             </form>
+            )}
           </div>
         </div>
 
@@ -614,6 +724,7 @@ export default function TicketDetailPage() {
                   icon: UserIcon, label: 'Assigned To',
                   value: ticket.assigned_to_detail?.full_name || 'Unassigned'
                 },
+                ...(ticket.location ? [{ icon: MapPin, label: 'Location', value: ticket.location }] : []),
               ].map(({ icon: Icon, label, value }) => (
                 <div key={label} className="flex items-start gap-3">
                   <Icon className="w-4 h-4 text-gray-300 mt-0.5 flex-shrink-0" />
@@ -735,23 +846,69 @@ export default function TicketDetailPage() {
                     <label className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
                       <RefreshCw className="w-3.5 h-3.5" /> Update Status
                     </label>
-                    <select
-                      value={selectedStatus}
-                      onChange={(e) => setSelectedStatus(e.target.value)}
-                      className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900"
-                    >
-                      {STATUS_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                    <Button
-                      onClick={updateStatus}
-                      className="w-full"
-                      loading={actionLoading}
-                      disabled={selectedStatus === ticket.status}
-                    >
-                      <CheckCircle2 className="w-4 h-4 mr-1.5" /> Apply Status
-                    </Button>
+
+                    {(ticket.status === 'resolved' || ticket.status === 'closed') ? (
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+                        <p className="text-xs text-gray-500">
+                          This ticket is {ticket.status}. Use the &quot;Reopen Ticket&quot; action below before changing the status further.
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <select
+                          value={selectedStatus}
+                          onChange={(e) => setSelectedStatus(e.target.value)}
+                          className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900"
+                        >
+                          {STATUS_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+                        <label className="flex items-center gap-2 cursor-pointer w-fit">
+                          <input
+                            type="file"
+                            multiple
+                            className="hidden"
+                            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv,.log,.zip"
+                            onChange={(e) => {
+                              const newFiles = Array.from(e.target.files || [])
+                              setStatusFiles((prev) => [...prev, ...newFiles])
+                              e.target.value = ''
+                            }}
+                          />
+                          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs text-gray-500 hover:bg-gray-50 border border-gray-200">
+                            <Paperclip className="w-3.5 h-3.5" /> Attach resolution files
+                          </div>
+                        </label>
+                        {statusFiles.length > 0 && (
+                          <div className="space-y-1.5">
+                            {statusFiles.map((file, i) => (
+                              <div key={i} className="flex items-center justify-between py-1.5 px-2.5 bg-gray-50 rounded-lg text-xs">
+                                <span className="text-gray-600 truncate">{file.name}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setStatusFiles((prev) => prev.filter((_, j) => j !== i))}
+                                  className="ml-2 text-gray-400 hover:text-red-500"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {statusError && (
+                          <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5">{statusError}</p>
+                        )}
+                        <Button
+                          onClick={updateStatus}
+                          className="w-full"
+                          loading={actionLoading}
+                          disabled={selectedStatus === ticket.status}
+                        >
+                          <CheckCircle2 className="w-4 h-4 mr-1.5" /> Apply Status
+                        </Button>
+                      </>
+                    )}
                   </div>
 
                   {/* Assign */}
@@ -879,6 +1036,9 @@ export default function TicketDetailPage() {
                   </p>
                 </div>
               </div>
+              {statusError && (
+                <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5">{statusError}</p>
+              )}
               <Button
                 onClick={reopenTicket}
                 loading={actionLoading}

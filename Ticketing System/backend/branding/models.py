@@ -48,6 +48,11 @@ class SystemSettings(models.Model):
         default=default_login_highlights, blank=True,
         help_text='List of {icon, text} bullet points shown on the login page.',
     )
+    powered_by_text = models.CharField(
+        max_length=200, blank=True,
+        default='Powered by GSH & ISH OMAN IT',
+        help_text='Shown in the sidebar footer and on the login page. Leave blank to hide.',
+    )
 
     # ---------- Appearance ----------
     primary_color = models.CharField(max_length=7, default='#1e3a5f',

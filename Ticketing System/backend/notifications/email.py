@@ -89,6 +89,18 @@ def _push(recipient, ticket, notification_type, title, message):
         logger.exception('In-app notification error for recipient %s', recipient)
 
 
+def _category_display(ticket):
+    # Ticket.category is a plain slug string (no Django `choices`), so there's
+    # no auto-generated get_category_display() - resolve it the same way
+    # TicketListSerializer/TicketDetailSerializer do, or templates would just
+    # silently render this field blank.
+    from tickets.models import TicketCategory
+    if not ticket.category:
+        return ''
+    cat = TicketCategory.objects.filter(slug=ticket.category).first()
+    return cat.name if cat else ticket.category.replace('_', ' ').title()
+
+
 def notify_ticket_created(ticket):
     if not _notify_enabled('notify_on_ticket_created'):
         return
@@ -97,7 +109,11 @@ def notify_ticket_created(ticket):
     message = f'Your ticket "{ticket.title}" has been received and is being reviewed.'
     _push(ticket.requester, ticket, 'ticket_created', title, message)
 
-    ctx = {'ticket': ticket, '_plain_text': f'Your ticket {ticket.ticket_number} has been received.'}
+    ctx = {
+        'ticket': ticket,
+        'category_display': _category_display(ticket),
+        '_plain_text': f'Your ticket {ticket.ticket_number} has been received.',
+    }
     send_ticket_email(
         f'[{ticket.ticket_number}] Your ticket has been received',
         ticket.requester.email,

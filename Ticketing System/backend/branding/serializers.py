@@ -1,3 +1,5 @@
+import json
+
 from rest_framework import serializers
 from .models import SystemSettings, LOGIN_HIGHLIGHT_ICONS
 
@@ -41,6 +43,14 @@ class SystemSettingsSerializer(serializers.ModelSerializer):
         return MASK if obj.email_host_password else ''
 
     def validate_login_highlights(self, value):
+        # The settings form submits as multipart/form-data (to carry the logo
+        # file in the same request), which delivers this field as a raw JSON
+        # string rather than a parsed list - decode it before validating.
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (TypeError, ValueError):
+                raise serializers.ValidationError('Must be valid JSON: a list of {icon, text} items.')
         if not isinstance(value, list):
             raise serializers.ValidationError('Must be a list of {icon, text} items.')
         for item in value:

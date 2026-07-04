@@ -19,7 +19,7 @@ export default function LoginPage() {
   const [showPwd, setShowPwd] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [branding, setBranding] = useState<Pick<SystemSettings, 'company_name' | 'portal_name' | 'company_logo_url' | 'primary_color' | 'portal_welcome' | 'support_hours' | 'company_email' | 'login_headline' | 'login_highlights'> | null>(null)
+  const [branding, setBranding] = useState<Pick<SystemSettings, 'company_name' | 'portal_name' | 'company_logo_url' | 'primary_color' | 'portal_welcome' | 'support_hours' | 'company_email' | 'login_headline' | 'login_highlights' | 'powered_by_text'> | null>(null)
 
   useEffect(() => {
     api.get('/branding/').then((r) => setBranding(r.data)).catch(() => {})
@@ -99,6 +99,9 @@ export default function LoginPage() {
         <p className="text-white/30 text-xs">
           {branding?.support_hours && `Support hours: ${branding.support_hours}`}
         </p>
+        {branding?.powered_by_text && (
+          <p className="text-white/20 text-[11px] mt-1">{branding.powered_by_text}</p>
+        )}
       </div>
 
       {/* ── Right panel ── */}

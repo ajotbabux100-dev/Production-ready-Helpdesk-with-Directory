@@ -11,10 +11,11 @@ from django.utils import timezone
 from django.http import FileResponse
 
 from rest_framework.views import APIView
-from .models import Ticket, Comment, Attachment, TicketFormConfig, TicketCategory, TicketParticipant
+from .models import Ticket, Comment, Attachment, CommentAttachment, TicketFormConfig, TicketCategory, TicketParticipant
 from .serializers import (
     TicketListSerializer, TicketDetailSerializer,
     TicketCreateSerializer, CommentSerializer, AttachmentSerializer,
+    CommentAttachmentSerializer,
     TicketFormConfigSerializer, TicketCategorySerializer, TicketParticipantSerializer,
 )
 from .filters import TicketFilter
@@ -253,6 +254,12 @@ class TicketViewSet(viewsets.ModelViewSet):
         if new_status not in dict(Ticket.STATUS_CHOICES):
             return Response({'error': 'Invalid status.'}, status=400)
 
+        if ticket.status in (Ticket.RESOLVED, Ticket.CLOSED) and new_status != Ticket.REOPENED:
+            return Response(
+                {'error': 'This ticket is resolved/closed. Reopen it before changing the status further.'},
+                status=400,
+            )
+
         old_status = ticket.status
         ticket.status = new_status
 
@@ -341,9 +348,28 @@ class TicketViewSet(viewsets.ModelViewSet):
     def add_comment(self, request, pk=None):
         ticket = self.get_object()
         is_internal = request.data.get('is_internal', False)
+        # Multipart requests (used when attaching files) send this as the
+        # string 'true'/'false', not a JSON boolean - normalize either way.
+        if isinstance(is_internal, str):
+            is_internal = is_internal.lower() == 'true'
 
         if is_internal and not request.user.has_perm_key('tickets', 'internal_note'):
             return Response({'error': 'Only agents can post internal notes.'}, status=403)
+
+        # Replies are locked once a ticket is resolved/closed - reopen it first.
+        # Internal notes stay allowed so agents can log follow-up context
+        # without having to reopen (and thus re-notify the requester).
+        if not is_internal and ticket.status in (Ticket.RESOLVED, Ticket.CLOSED):
+            return Response(
+                {'error': 'This ticket is resolved/closed. Reopen it to add a reply.'},
+                status=400,
+            )
+
+        files = request.FILES.getlist('files')
+        for file in files:
+            error = attachment_validation_error(file)
+            if error:
+                return Response({'error': error}, status=400)
 
         serializer = CommentSerializer(data={
             'ticket': ticket.id,
@@ -352,6 +378,16 @@ class TicketViewSet(viewsets.ModelViewSet):
         })
         serializer.is_valid(raise_exception=True)
         comment = serializer.save(author=request.user, ticket=ticket)
+
+        for file in files:
+            CommentAttachment.objects.create(
+                comment=comment,
+                uploaded_by=request.user,
+                file=file,
+                filename=file.name,
+                file_size=file.size,
+                content_type=file.content_type,
+            )
 
         if not ticket.first_response_at and request.user.has_perm_key('tickets', 'internal_note'):
             ticket.first_response_at = timezone.now()
@@ -405,6 +441,28 @@ class AttachmentDownloadView(generics.GenericAPIView):
         if not visible_tickets_for(request.user).filter(pk=attachment.ticket_id).exists():
             # 404, not 403 - don't confirm the attachment/ticket exists to
             # someone who isn't authorized to see it.
+            raise NotFound('Attachment not found.')
+
+        return FileResponse(
+            attachment.file.open('rb'),
+            as_attachment=True,
+            filename=attachment.filename,
+            content_type=attachment.content_type or None,
+        )
+
+
+class CommentAttachmentDownloadView(generics.GenericAPIView):
+    """Same as AttachmentDownloadView, gating a comment's attachment by
+    whether the underlying ticket is visible to the requesting user."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        try:
+            attachment = CommentAttachment.objects.select_related('comment__ticket').get(pk=pk)
+        except CommentAttachment.DoesNotExist:
+            raise NotFound('Attachment not found.')
+
+        if not visible_tickets_for(request.user).filter(pk=attachment.comment.ticket_id).exists():
             raise NotFound('Attachment not found.')
 
         return FileResponse(

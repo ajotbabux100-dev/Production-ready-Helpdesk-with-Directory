@@ -42,7 +42,7 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const router    = useRouter()
   const { user, clearAuth, refreshToken } = useAuthStore()
   const isStaff   = useHasPerm('tickets', 'claim')
-  const [branding, setBranding] = useState<Pick<SystemSettings, 'company_name' | 'portal_name' | 'company_logo_url' | 'primary_color'> | null>(null)
+  const [branding, setBranding] = useState<Pick<SystemSettings, 'company_name' | 'portal_name' | 'company_logo_url' | 'primary_color' | 'powered_by_text'> | null>(null)
 
   useEffect(() => {
     api.get('/branding/').then((r) => setBranding(r.data)).catch(() => {})
@@ -165,9 +165,12 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
         })}
       </nav>
 
-      {/* ── Version ── */}
+      {/* ── Version / Powered by ── */}
       <div className="px-5 pb-2">
         <p className="text-[10px] text-white/25 font-mono">v{process.env.NEXT_PUBLIC_VERSION || '1.0.0'}</p>
+        {branding?.powered_by_text && (
+          <p className="text-[10px] text-white/25 mt-0.5 truncate">{branding.powered_by_text}</p>
+        )}
       </div>
 
       {/* ── User profile ── */}

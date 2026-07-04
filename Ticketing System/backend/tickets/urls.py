@@ -1,6 +1,9 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import TicketViewSet, TicketFormConfigView, TicketCategoryViewSet, AttachmentDownloadView
+from .views import (
+    TicketViewSet, TicketFormConfigView, TicketCategoryViewSet,
+    AttachmentDownloadView, CommentAttachmentDownloadView,
+)
 
 router = DefaultRouter()
 router.register('categories', TicketCategoryViewSet, basename='ticket-category')
@@ -12,5 +15,6 @@ urlpatterns = [
     # route uses an unrestricted pk lookup, so "attachments" would otherwise
     # be swallowed as a ticket pk if this were registered after it.
     path('attachments/<int:pk>/download/', AttachmentDownloadView.as_view(), name='attachment-download'),
+    path('comment-attachments/<int:pk>/download/', CommentAttachmentDownloadView.as_view(), name='comment-attachment-download'),
     path('', include(router.urls)),
 ]
