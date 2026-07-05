@@ -5,7 +5,7 @@ import api from '@/app/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { Button } from '@/app/components/ui/button'
 import { Input } from '@/app/components/ui/input'
-import { User as UserIcon, Lock, Camera, CheckCircle2, Shield, RefreshCw } from 'lucide-react'
+import { User as UserIcon, Lock, Camera, CheckCircle2, Shield, RefreshCw, X } from 'lucide-react'
 
 export default function ProfilePage() {
   const { user, setUser } = useAuthStore()
@@ -48,15 +48,31 @@ export default function ProfilePage() {
     }
   }
 
+  const [avatarLoading, setAvatarLoading] = useState(false)
+
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    setAvatarLoading(true)
     const fd = new FormData()
     fd.append('avatar', file)
     try {
       const res = await api.patch('/auth/users/me/', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
       setUser(res.data)
     } catch {}
+    finally {
+      setAvatarLoading(false)
+      e.target.value = ''
+    }
+  }
+
+  const handleRemoveAvatar = async () => {
+    setAvatarLoading(true)
+    try {
+      const res = await api.patch('/auth/users/me/', { avatar: null })
+      setUser(res.data)
+    } catch {}
+    finally { setAvatarLoading(false) }
   }
 
   const handleSwitchRole = async (roleId: number) => {
@@ -118,11 +134,22 @@ export default function ProfilePage() {
             )}
             <button
               onClick={() => fileRef.current?.click()}
-              className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-500 hover:text-blue-900"
+              disabled={avatarLoading}
+              className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-500 hover:text-blue-900 disabled:opacity-60"
               title="Change photo"
             >
               <Camera className="w-3.5 h-3.5" />
             </button>
+            {user.avatar && (
+              <button
+                onClick={handleRemoveAvatar}
+                disabled={avatarLoading}
+                className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-500 hover:text-red-600 disabled:opacity-60"
+                title="Remove photo"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
           </div>
           <div>

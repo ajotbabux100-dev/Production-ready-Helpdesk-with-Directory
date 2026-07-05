@@ -148,7 +148,7 @@ class TicketViewSet(viewsets.ModelViewSet):
                    description=f'Ticket {ticket.ticket_number} assigned',
                    ticket=ticket, request=request)
         send_ticket_notification.delay('ticket_assigned', ticket.id)
-        return Response(TicketDetailSerializer(ticket).data)
+        return Response(TicketDetailSerializer(ticket, context={'request': request}).data)
 
     @action(detail=True, methods=['post'])
     def escalate(self, request, pk=None):
@@ -203,7 +203,7 @@ class TicketViewSet(viewsets.ModelViewSet):
         except Exception:
             logger.exception('Escalation email error for ticket %s', ticket.ticket_number)
 
-        return Response(TicketDetailSerializer(ticket).data)
+        return Response(TicketDetailSerializer(ticket, context={'request': request}).data)
 
     @action(detail=True, methods=['post'])
     def claim(self, request, pk=None):
@@ -218,7 +218,7 @@ class TicketViewSet(viewsets.ModelViewSet):
                    description=f'Ticket {ticket.ticket_number} claimed by {request.user.full_name}',
                    ticket=ticket, request=request)
         send_ticket_notification.delay('ticket_assigned', ticket.id)
-        return Response(TicketDetailSerializer(ticket).data)
+        return Response(TicketDetailSerializer(ticket, context={'request': request}).data)
 
     @action(detail=True, methods=['post'])
     def reopen(self, request, pk=None):
@@ -240,7 +240,7 @@ class TicketViewSet(viewsets.ModelViewSet):
                    old_value=old_status, new_value=Ticket.REOPENED,
                    ticket=ticket, request=request)
         send_ticket_notification.delay('status_updated', ticket.id)
-        return Response(TicketDetailSerializer(ticket).data)
+        return Response(TicketDetailSerializer(ticket, context={'request': request}).data)
 
     @action(detail=True, methods=['patch'])
     def update_status(self, request, pk=None):
@@ -276,7 +276,7 @@ class TicketViewSet(viewsets.ModelViewSet):
                    old_value=old_status, new_value=new_status,
                    ticket=ticket, request=request)
         send_ticket_notification.delay('status_updated', ticket.id)
-        return Response(TicketDetailSerializer(ticket).data)
+        return Response(TicketDetailSerializer(ticket, context={'request': request}).data)
 
     @action(detail=True, methods=['post'])
     def invite(self, request, pk=None):
@@ -453,7 +453,12 @@ class AttachmentDownloadView(generics.GenericAPIView):
 
 class CommentAttachmentDownloadView(generics.GenericAPIView):
     """Same as AttachmentDownloadView, gating a comment's attachment by
-    whether the underlying ticket is visible to the requesting user."""
+    whether the underlying ticket is visible to the requesting user - plus,
+    for attachments on an internal note, whether the requester can see
+    internal notes at all. TicketDetailSerializer already stops a
+    non-privileged requester from ever seeing this URL, but that's not the
+    only way an id could be learned/guessed, so the download endpoint itself
+    must not trust the ticket-visibility check alone."""
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
@@ -463,6 +468,9 @@ class CommentAttachmentDownloadView(generics.GenericAPIView):
             raise NotFound('Attachment not found.')
 
         if not visible_tickets_for(request.user).filter(pk=attachment.comment.ticket_id).exists():
+            raise NotFound('Attachment not found.')
+
+        if attachment.comment.is_internal and not request.user.has_perm_key('tickets', 'internal_note'):
             raise NotFound('Attachment not found.')
 
         return FileResponse(

@@ -14,15 +14,22 @@ from excel_io import build_workbook
 
 
 def _dept_scoped(qs, request):
-    """Shared department-scoping rule used by every report: an explicit
-    ?department= wins, otherwise non-admins are pinned to their own
-    department (admins/is_super see everything)."""
-    dept_id = request.query_params.get('department')
-    if dept_id:
-        return qs.filter(department_id=dept_id)
-    if not request.user.is_admin and request.user.department:
-        return qs.filter(department=request.user.department)
-    return qs
+    """Shared department-scoping rule used by every report (including the
+    export, which returns row-level ticket detail, not just aggregates).
+    Non-admins are ALWAYS pinned to their own department - ?department= is
+    only ever honored for an admin/is_super user. Previously a non-admin's
+    own ?department=<other id> was trusted outright, letting any manager
+    pull another department's tickets by naming its id; a non-admin with no
+    department at all also fell through to the unfiltered queryset (every
+    department) instead of getting nothing."""
+    if request.user.is_admin:
+        dept_id = request.query_params.get('department')
+        if dept_id:
+            return qs.filter(department_id=dept_id)
+        return qs
+    if request.user.department_id:
+        return qs.filter(department=request.user.department_id)
+    return qs.none()
 
 
 def _month_bounds(month_str):

@@ -119,7 +119,7 @@ class TicketDetailSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     priority_display = serializers.CharField(source='get_priority_display', read_only=True)
     category_display = serializers.SerializerMethodField()
-    comments = CommentSerializer(many=True, read_only=True)
+    comments = serializers.SerializerMethodField()
     attachments = AttachmentSerializer(many=True, read_only=True)
     participants = TicketParticipantSerializer(many=True, read_only=True)
     is_sla_response_breached = serializers.ReadOnlyField()
@@ -130,6 +130,19 @@ class TicketDetailSerializer(serializers.ModelSerializer):
             return ''
         cat = TicketCategory.objects.filter(slug=obj.category).first()
         return cat.name if cat else obj.category.replace('_', ' ').title()
+
+    def get_comments(self, obj):
+        # Internal notes (and their attachments) are staff-only - filtering
+        # them out here, not just in the frontend, closes the gap where a
+        # requester's own ticket-detail response would otherwise hand them
+        # the note body and a working download_url for internal-only files.
+        request = self.context.get('request')
+        is_staff = bool(
+            request and request.user.is_authenticated
+            and request.user.has_perm_key('tickets', 'internal_note')
+        )
+        qs = obj.comments.all() if is_staff else obj.comments.filter(is_internal=False)
+        return CommentSerializer(qs, many=True, context=self.context).data
 
     class Meta:
         model = Ticket
