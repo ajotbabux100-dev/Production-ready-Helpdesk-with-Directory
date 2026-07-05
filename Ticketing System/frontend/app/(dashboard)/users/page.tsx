@@ -15,16 +15,20 @@ import { formatDateShort, formatDate } from '@/app/lib/utils'
 
 interface LoginLog {
   id: number
+  user_name?: string
+  user_email?: string
   action: string
   action_display: string
   ip_address: string | null
+  device: string
   timestamp: string
 }
 
-const emptyForm = { first_name: '', last_name: '', email: '', phone: '', role: '', department: '', password: '', assignable_roles: [] as number[] }
+const emptyForm = { first_name: '', last_name: '', email: '', phone: '', role: '', department: '', password: '', idle_timeout_minutes: '', assignable_roles: [] as number[] }
 
 export default function UsersPage() {
   const canAdd = useHasPerm('users', 'add')
+  const canViewAudit = useHasPerm('audit', 'view')
   const [users, setUsers] = useState<User[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [roles, setRoles] = useState<Role[]>([])
@@ -37,11 +41,19 @@ export default function UsersPage() {
   const [search, setSearch] = useState('')
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
 
-  // Login history modal
+  // Login history modal (single user)
   const [historyUser, setHistoryUser] = useState<User | null>(null)
   const [historyLogs, setHistoryLogs] = useState<LoginLog[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
+
+  // Login history modal (all users combined)
+  const [allHistoryOpen, setAllHistoryOpen] = useState(false)
+  const [allHistoryLogs, setAllHistoryLogs] = useState<LoginLog[]>([])
+  const [allHistoryLoading, setAllHistoryLoading] = useState(false)
+  const [allHistoryPage, setAllHistoryPage] = useState(1)
+  const [allHistoryCount, setAllHistoryCount] = useState(0)
+  const [allHistorySearch, setAllHistorySearch] = useState('')
 
   const fetchAll = async () => {
     const [usersRes, deptsRes, rolesRes] = await Promise.all([
@@ -70,6 +82,7 @@ export default function UsersPage() {
       first_name: user.first_name, last_name: user.last_name,
       email: user.email, phone: user.phone, role: String(user.role),
       department: String(user.department ?? ''), password: '',
+      idle_timeout_minutes: user.idle_timeout_minutes ? String(user.idle_timeout_minutes) : '',
       assignable_roles: user.assignable_roles ?? [],
     })
     setErrors({})
@@ -100,6 +113,7 @@ export default function UsersPage() {
         first_name: form.first_name, last_name: form.last_name,
         email: form.email, phone: form.phone, role: Number(form.role),
         department: form.department ? Number(form.department) : null,
+        idle_timeout_minutes: form.idle_timeout_minutes ? Number(form.idle_timeout_minutes) : null,
         assignable_roles: form.assignable_roles.filter((id) => id !== Number(form.role)),
       }
       if (form.password) payload.password = form.password
@@ -136,18 +150,29 @@ export default function UsersPage() {
     setHistoryOpen(true)
     setHistoryLoading(true)
     try {
-      const res = await api.get(`/audit/?user=${user.id}&action=login&ordering=-timestamp&page_size=50`)
-      const loginLogs = res.data.results ?? res.data
-      const res2 = await api.get(`/audit/?user=${user.id}&action=logout&ordering=-timestamp&page_size=50`)
-      const logoutLogs = res2.data.results ?? res2.data
-      const combined = [...loginLogs, ...logoutLogs].sort(
-        (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      )
-      setHistoryLogs(combined)
+      const res = await api.get(`/audit/?user=${user.id}&actions=login,logout&ordering=-timestamp&page_size=50`)
+      setHistoryLogs(res.data.results ?? res.data)
     } finally {
       setHistoryLoading(false)
     }
   }
+
+  const fetchAllHistory = async () => {
+    setAllHistoryLoading(true)
+    try {
+      const params = new URLSearchParams({
+        actions: 'login,logout', ordering: '-timestamp', page: String(allHistoryPage),
+      })
+      if (allHistorySearch) params.set('search', allHistorySearch)
+      const res = await api.get(`/audit/?${params}`)
+      setAllHistoryLogs(res.data.results ?? res.data)
+      setAllHistoryCount(res.data.count ?? 0)
+    } finally {
+      setAllHistoryLoading(false)
+    }
+  }
+
+  useEffect(() => { if (allHistoryOpen) fetchAllHistory() }, [allHistoryOpen, allHistoryPage, allHistorySearch])
 
   return (
     <div className="space-y-4">
@@ -157,6 +182,11 @@ export default function UsersPage() {
           <p className="text-sm text-gray-500">{users.length} users</p>
         </div>
         <div className="flex items-center gap-2">
+          {canViewAudit && (
+            <Button variant="outline" onClick={() => { setAllHistoryPage(1); setAllHistorySearch(''); setAllHistoryOpen(true) }}>
+              <History className="w-4 h-4 mr-1.5" /> Login History
+            </Button>
+          )}
           {canAdd && (
             <Link href="/settings?tab=masters">
               <Button variant="outline"><Upload className="w-4 h-4 mr-1.5" /> Master Upload</Button>
@@ -194,7 +224,8 @@ export default function UsersPage() {
                       <div className="flex items-center gap-3">
                         <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
                         <span className="text-sm text-red-700 flex-1">
-                          Delete <strong>{user.full_name}</strong>? Their name will be anonymised as a sequential alias (e.g. <strong>#name1</strong>) in all records. This cannot be undone.
+                          Delete <strong>{user.full_name}</strong>? Their name will be anonymised as a sequential alias based on their first name
+                          (e.g. <strong>#{(user.first_name.toLowerCase().replace(/[^a-z0-9]/g, '') || 'user')}1</strong>, incrementing if that name is reused) in all records. This cannot be undone.
                         </span>
                         <button
                           onClick={() => deleteUser(user.id)}
@@ -282,6 +313,7 @@ export default function UsersPage() {
                   <tr>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Event</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Date & Time</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Device</th>
                     <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">IP Address</th>
                   </tr>
                 </thead>
@@ -301,11 +333,81 @@ export default function UsersPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-gray-600 text-xs">{formatDate(log.timestamp)}</td>
+                      <td className="px-4 py-3 text-gray-500 text-xs">{log.device ?? '—'}</td>
                       <td className="px-4 py-3 text-gray-400 text-xs font-mono">{log.ip_address ?? '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+        </div>
+      </Modal>
+
+      {/* ── Login History Modal (all users) ── */}
+      <Modal open={allHistoryOpen} onClose={() => setAllHistoryOpen(false)} title="Login History — All Users" size="xl">
+        <div className="p-6 space-y-4">
+          <Input
+            placeholder="Search by name or email..."
+            value={allHistorySearch}
+            onChange={(e) => { setAllHistorySearch(e.target.value); setAllHistoryPage(1) }}
+          />
+          {allHistoryLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-900" />
+            </div>
+          ) : allHistoryLogs.length === 0 ? (
+            <div className="text-center py-12 text-gray-400">
+              <History className="w-8 h-8 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">No login history found.</p>
+            </div>
+          ) : (
+            <div className="border border-gray-200 rounded-xl overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">User</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Event</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Date & Time</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Device</th>
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">IP Address</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {allHistoryLogs.map((log) => (
+                    <tr key={log.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <p className="text-gray-900 font-medium">{log.user_name ?? '—'}</p>
+                        <p className="text-gray-400 text-xs">{log.user_email}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                          log.action === 'login'
+                            ? 'bg-green-50 text-green-700 border border-green-200'
+                            : 'bg-gray-100 text-gray-600 border border-gray-200'
+                        }`}>
+                          {log.action === 'login'
+                            ? <LogIn className="w-3 h-3" />
+                            : <LogOut className="w-3 h-3" />}
+                          {log.action_display}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 text-xs">{formatDate(log.timestamp)}</td>
+                      <td className="px-4 py-3 text-gray-500 text-xs">{log.device ?? '—'}</td>
+                      <td className="px-4 py-3 text-gray-400 text-xs font-mono">{log.ip_address ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {allHistoryCount > 20 && (
+            <div className="flex items-center justify-between pt-1">
+              <p className="text-sm text-gray-500">Page {allHistoryPage} of {Math.ceil(allHistoryCount / 20)}</p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" disabled={allHistoryPage <= 1} onClick={() => setAllHistoryPage((p) => p - 1)}>Previous</Button>
+                <Button variant="outline" size="sm" disabled={allHistoryPage >= Math.ceil(allHistoryCount / 20)} onClick={() => setAllHistoryPage((p) => p + 1)}>Next</Button>
+              </div>
             </div>
           )}
         </div>
@@ -341,6 +443,15 @@ export default function UsersPage() {
             value={form.password}
             onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
             error={errors.password}
+          />
+          <Input
+            label="Idle Timeout Override (minutes)"
+            type="number"
+            min={1}
+            placeholder={editing ? `Default: ${editing.effective_idle_timeout_minutes} min` : 'Leave blank to use the system default'}
+            value={form.idle_timeout_minutes}
+            onChange={(e) => setForm((f) => ({ ...f, idle_timeout_minutes: e.target.value }))}
+            error={errors.idle_timeout_minutes}
           />
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Additional Roles (switchable)</label>

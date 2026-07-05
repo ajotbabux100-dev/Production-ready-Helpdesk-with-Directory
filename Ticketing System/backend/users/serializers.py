@@ -44,6 +44,7 @@ class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False)
     role_detail = RoleSerializer(source='role', read_only=True)
     assignable_roles_detail = RoleSerializer(source='assignable_roles', many=True, read_only=True)
+    effective_idle_timeout_minutes = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -51,10 +52,17 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'email', 'first_name', 'last_name', 'full_name',
             'phone', 'role', 'role_detail', 'assignable_roles', 'assignable_roles_detail',
             'department', 'department_name',
-            'avatar', 'is_active', 'is_deleted', 'deleted_alias',
+            'avatar', 'idle_timeout_minutes', 'effective_idle_timeout_minutes',
+            'is_active', 'is_deleted', 'deleted_alias',
             'date_joined', 'password',
         ]
         read_only_fields = ['id', 'date_joined', 'is_deleted', 'deleted_alias']
+
+    def get_effective_idle_timeout_minutes(self, obj):
+        if obj.idle_timeout_minutes:
+            return obj.idle_timeout_minutes
+        from branding.models import SystemSettings
+        return SystemSettings.get().default_idle_timeout_minutes
 
     def validate_department(self, value):
         if value is None:

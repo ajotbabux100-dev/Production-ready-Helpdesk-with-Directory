@@ -33,6 +33,8 @@ export interface User {
   department: number | null
   department_name: string | null
   avatar: string | null
+  idle_timeout_minutes: number | null
+  effective_idle_timeout_minutes: number
   is_active: boolean
   is_deleted?: boolean
   deleted_alias?: string
@@ -106,6 +108,8 @@ export interface SystemSettings {
   login_headline: string
   login_highlights: { icon: string; text: string }[]
   powered_by_text: string
+  // Security
+  default_idle_timeout_minutes: number
   // Appearance
   primary_color: string
   favicon: string | null
@@ -236,6 +240,19 @@ export interface Notification {
   message: string
   is_read: boolean
   created_at: string
+}
+
+export interface EmailTemplate {
+  id: number
+  notification_type: string
+  label: string
+  is_custom: boolean
+  subject: string
+  body: string
+  default_subject: string
+  default_body: string
+  placeholders: string[]
+  updated_at: string
 }
 
 export interface DirectoryField {

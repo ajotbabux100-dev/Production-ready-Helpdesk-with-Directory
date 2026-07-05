@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import api from '@/app/lib/api'
+import { downloadFile } from '@/app/lib/download'
 import { SystemSettings, TicketFormConfig, TicketCategory, DirectoryTab, DirectoryField, PortalCategory, Role } from '@/app/lib/types'
 import { useAuthStore, useHasPerm } from '@/app/lib/store'
 import { LOGIN_ICON_MAP, LOGIN_ICON_OPTIONS, DEFAULT_LOGIN_HIGHLIGHTS, DEFAULT_LOGIN_HEADLINE } from '@/app/lib/loginIcons'
@@ -14,9 +15,11 @@ import { Textarea } from '@/app/components/ui/textarea'
 import {
   Settings, Building2, Building, Ticket, Mail, Layout, Tag,
   CheckCircle2, Circle, Upload, X, Eye, EyeOff, Plus, Pencil, Trash2, GripVertical,
-  BookOpen, Columns3, Globe, Users as UsersIcon, Edit, ShieldCheck, Lock, UploadCloud,
+  BookOpen, Columns3, Globe, Users as UsersIcon, Edit, ShieldCheck, Lock, UploadCloud, FileEdit,
+  Archive, Download,
 } from 'lucide-react'
 import { DepartmentsSection } from './DepartmentsSection'
+import { EmailTemplatesSection } from './EmailTemplatesSection'
 
 // ─── tiny local Toggle ───────────────────────────────────────────────────────
 function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
@@ -58,6 +61,7 @@ const TABS = [
   { id: 'portal', label: 'Portal', icon: Layout },
   { id: 'ticket_numbering', label: 'Ticket Series', icon: Ticket },
   { id: 'email', label: 'Email', icon: Mail },
+  { id: 'email_templates', label: 'Email Templates', icon: FileEdit },
   { id: 'form_fields', label: 'Form Fields', icon: Settings },
   { id: 'categories', label: 'Categories', icon: Tag },
   { id: 'departments', label: 'Departments', icon: Building },
@@ -65,6 +69,7 @@ const TABS = [
   { id: 'masters', label: 'Masters', icon: UploadCloud },
   { id: 'access', label: 'Portal Category Access', icon: ShieldCheck },
   { id: 'roles', label: 'Roles', icon: Lock },
+  { id: 'backup', label: 'Backup', icon: Archive },
 ]
 
 const FORM_FIELDS = [
@@ -80,6 +85,7 @@ const DEFAULT_SETTINGS: Partial<SystemSettings> = {
   portal_name: '', portal_welcome: '', support_hours: '',
   login_headline: DEFAULT_LOGIN_HEADLINE, login_highlights: DEFAULT_LOGIN_HIGHLIGHTS,
   powered_by_text: '',
+  default_idle_timeout_minutes: 15,
   primary_color: '#1e3a5f',
   ticket_prefix: 'TKT', ticket_separator: '-',
   ticket_include_year: true, ticket_year_format: 'YYYY',
@@ -112,6 +118,8 @@ export default function SettingsPage() {
   const [saveError, setSaveError] = useState('')
   const [showEmailPwd, setShowEmailPwd] = useState(false)
   const [testEmailRecipient, setTestEmailRecipient] = useState('')
+  const [backupLoading, setBackupLoading] = useState(false)
+  const [backupError, setBackupError] = useState('')
   const [testEmailLoading, setTestEmailLoading] = useState(false)
   const [testEmailResult, setTestEmailResult] = useState<{ success: boolean; message?: string; error?: string } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -392,6 +400,30 @@ export default function SettingsPage() {
     setCategories((prev) => prev.map((c) => c.id === cat.id ? res.data : c))
   }
 
+  const handleFullBackup = async () => {
+    setBackupLoading(true)
+    setBackupError('')
+    try {
+      await downloadFile('/branding/full-backup/', 'helpdesk_full_backup.zip')
+    } catch (err: any) {
+      // downloadFile requests responseType 'blob', so an error body also
+      // arrives as a Blob rather than parsed JSON - read it back out.
+      const data = err.response?.data
+      if (data instanceof Blob) {
+        try {
+          const text = await data.text()
+          setBackupError(JSON.parse(text).error || 'Failed to create backup.')
+        } catch {
+          setBackupError('Failed to create backup.')
+        }
+      } else {
+        setBackupError(data?.error || 'Failed to create backup.')
+      }
+    } finally {
+      setBackupLoading(false)
+    }
+  }
+
   const handleSave = async () => {
     setSaving(true)
     setSaveError('')
@@ -466,7 +498,7 @@ export default function SettingsPage() {
               <CheckCircle2 className="w-4 h-4" /> Saved
             </span>
           )}
-          {activeTab !== 'categories' && activeTab !== 'directory' && activeTab !== 'access' && activeTab !== 'departments' && (
+          {activeTab !== 'categories' && activeTab !== 'directory' && activeTab !== 'access' && activeTab !== 'departments' && activeTab !== 'email_templates' && activeTab !== 'backup' && (
             <Button onClick={handleSave} loading={saving}>Save All Changes</Button>
           )}
         </div>
@@ -618,6 +650,28 @@ export default function SettingsPage() {
               onChange={(e) => set({ powered_by_text: e.target.value })}
             />
             <p className="text-xs text-gray-400 -mt-2">Shown in the sidebar footer and on the login page. Leave blank to hide.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Security ── */}
+      {activeTab === 'portal' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Security</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Input
+              label="Default Idle Timeout (minutes)"
+              type="number"
+              min={1}
+              value={settings.default_idle_timeout_minutes ?? 15}
+              onChange={(e) => set({ default_idle_timeout_minutes: Number(e.target.value) })}
+            />
+            <p className="text-xs text-gray-400 -mt-2">
+              Users are automatically logged out after this many minutes of inactivity. Override
+              this per user in Users -&gt; Edit User.
+            </p>
           </CardContent>
         </Card>
       )}
@@ -1178,6 +1232,8 @@ export default function SettingsPage() {
 
       {activeTab === 'departments' && <DepartmentsSection />}
 
+      {activeTab === 'email_templates' && <EmailTemplatesSection />}
+
       {activeTab === 'directory' && (
         <div className="space-y-6">
           {dirError && (
@@ -1348,6 +1404,36 @@ export default function SettingsPage() {
 
       {activeTab === 'roles' && (
         <RolesSection roles={allRoles} onRolesChange={setAllRoles} currentUserId={user?.id ?? null} />
+      )}
+
+      {activeTab === 'backup' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Full System Backup</CardTitle>
+            <p className="text-xs text-gray-400 mt-1">
+              Download everything in one file: a consistent database snapshot plus every uploaded
+              file (ticket attachments, avatars, branding logo/favicon).
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-1.5">
+              <p className="text-sm text-gray-700 font-medium">This backup includes:</p>
+              <ul className="text-sm text-gray-500 list-disc list-inside space-y-0.5">
+                <li>The full database (tickets, users, departments, settings, audit log, everything)</li>
+                <li>All uploaded files under <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">media/</code></li>
+              </ul>
+            </div>
+            {backupError && (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{backupError}</p>
+            )}
+            <Button onClick={handleFullBackup} loading={backupLoading} className="gap-1.5">
+              <Download className="w-4 h-4" /> Download Full Backup
+            </Button>
+            <p className="text-xs text-gray-400">
+              This can take a moment to generate for a large system — the download starts once it's ready.
+            </p>
+          </CardContent>
+        </Card>
       )}
 
       {/* ── Category Modal ── */}

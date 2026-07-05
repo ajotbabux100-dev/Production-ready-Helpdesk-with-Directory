@@ -1,5 +1,38 @@
 from django.db import models
 
+# Deliberately not a full UA-parsing dependency - this only needs to produce
+# a friendly "Browser on OS" label for the login history views, not handle
+# every device on earth. Order matters: check more specific tokens (Edg,
+# OPR) before the generic ones they also contain (Chrome, Safari).
+_OS_PATTERNS = [
+    ('Windows', 'Windows'),
+    # iOS UAs also contain "like Mac OS X" - must check these before the
+    # plain Mac OS X pattern below or every iPhone/iPad reports as macOS.
+    ('iPhone', 'iOS'),
+    ('iPad', 'iPadOS'),
+    ('Mac OS X', 'macOS'),
+    ('Android', 'Android'),
+    ('Linux', 'Linux'),
+]
+_BROWSER_PATTERNS = [
+    ('Edg/', 'Edge'),
+    ('OPR/', 'Opera'),
+    ('Chrome/', 'Chrome'),
+    ('Firefox/', 'Firefox'),
+    ('Safari/', 'Safari'),
+]
+
+
+def describe_user_agent(user_agent):
+    """Turns a raw User-Agent header into a short 'Browser on OS' label,
+    e.g. 'Chrome on Windows'. Returns 'Unknown device' if ua is blank or
+    unrecognized."""
+    if not user_agent:
+        return 'Unknown device'
+    os_name = next((label for token, label in _OS_PATTERNS if token in user_agent), 'Unknown OS')
+    browser = next((label for token, label in _BROWSER_PATTERNS if token in user_agent), 'Unknown browser')
+    return f'{browser} on {os_name}'
+
 
 class AuditLog(models.Model):
     TICKET_CREATED = 'ticket_created'
@@ -24,6 +57,7 @@ class AuditLog(models.Model):
     PASSWORD_RESET_REQUESTED = 'password_reset_requested'
     PASSWORD_RESET_COMPLETED = 'password_reset_completed'
     ROLE_SWITCHED = 'role_switched'
+    AUDIT_LOG_PURGED = 'audit_log_purged'
 
     ACTION_CHOICES = [
         (TICKET_CREATED, 'Ticket Created'),
@@ -48,6 +82,7 @@ class AuditLog(models.Model):
         (PASSWORD_RESET_REQUESTED, 'Password Reset Requested'),
         (PASSWORD_RESET_COMPLETED, 'Password Reset Completed'),
         (ROLE_SWITCHED, 'Active Role Switched'),
+        (AUDIT_LOG_PURGED, 'Audit Log Purged'),
     ]
 
     user = models.ForeignKey(
@@ -69,10 +104,15 @@ class AuditLog(models.Model):
     old_value = models.TextField(blank=True)
     new_value = models.TextField(blank=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=300, blank=True, help_text='Raw User-Agent header, for device/browser display.')
     timestamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['-timestamp']
+
+    @property
+    def device_display(self):
+        return describe_user_agent(self.user_agent)
 
     def __str__(self):
         return f'{self.action} by {self.user} at {self.timestamp}'

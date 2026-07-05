@@ -1,15 +1,24 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuthStore } from '@/app/lib/store'
 import api from '@/app/lib/api'
 import { SystemSettings } from '@/app/lib/types'
-import { Ticket, Eye, EyeOff, Zap } from 'lucide-react'
+import { Ticket, Eye, EyeOff, Zap, Clock } from 'lucide-react'
 import { LOGIN_ICON_MAP, DEFAULT_LOGIN_HIGHLIGHTS as DEFAULT_HIGHLIGHTS, DEFAULT_LOGIN_HEADLINE as DEFAULT_HEADLINE } from '@/app/lib/loginIcons'
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageInner />
+    </Suspense>
+  )
+}
+
+function LoginPageInner() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const setAuth = useAuthStore((s) => s.setAuth)
   const user = useAuthStore((s) => s.user)
   const accessToken = useAuthStore((s) => s.accessToken)
@@ -19,6 +28,7 @@ export default function LoginPage() {
   const [showPwd, setShowPwd] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const loggedOutForIdle = searchParams.get('reason') === 'idle'
   const [branding, setBranding] = useState<Pick<SystemSettings, 'company_name' | 'portal_name' | 'company_logo_url' | 'primary_color' | 'portal_welcome' | 'support_hours' | 'company_email' | 'login_headline' | 'login_highlights' | 'powered_by_text'> | null>(null)
 
   useEffect(() => {
@@ -118,6 +128,13 @@ export default function LoginPage() {
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
             <h2 className="text-2xl font-bold text-gray-900 mb-1">Sign in</h2>
             <p className="text-gray-400 text-sm mb-7">Enter your work email and password</p>
+
+            {loggedOutForIdle && !error && (
+              <div className="mb-5 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 flex items-center gap-2">
+                <Clock className="w-4 h-4 flex-shrink-0" />
+                You were logged out due to inactivity. Please sign in again.
+              </div>
+            )}
 
             {error && (
               <div className="mb-5 rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 flex items-center gap-2">

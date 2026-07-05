@@ -1,9 +1,46 @@
 import logging
+import string
 
 from django.core.mail import EmailMultiAlternatives, get_connection
 from django.template.loader import render_to_string
+from django.utils.html import escape
+from django.utils.safestring import mark_safe
 
 logger = logging.getLogger(__name__)
+
+
+class _SafeDict(dict):
+    """Missing placeholders render as '' instead of raising KeyError - an
+    admin's custom template may reference a placeholder that isn't relevant
+    to every call site (e.g. {escalated_by} outside the escalation email)."""
+    def __missing__(self, key):
+        return ''
+
+
+def _placeholder_context(ticket):
+    """Common {placeholder} values available to every customizable email -
+    see EMAIL_TEMPLATE_PLACEHOLDERS in models.py, which documents this same
+    list for the Settings UI."""
+    return {
+        'ticket_number': ticket.ticket_number,
+        'title': ticket.title,
+        'description': ticket.description,
+        'category': _category_display(ticket),
+        'priority': ticket.get_priority_display(),
+        'status': ticket.get_status_display(),
+        'department': ticket.department.name if ticket.department else '',
+        'location': ticket.location or '',
+        'requester_name': ticket.requester.full_name,
+        'requester_email': ticket.requester.email,
+        'assigned_to_name': ticket.assigned_to.full_name if ticket.assigned_to else 'Unassigned',
+        'portal_name': _portal_name(),
+        'ticket_url': f'{_frontend_url()}/tickets/{ticket.id}',
+    }
+
+
+def _portal_name():
+    from branding.models import SystemSettings
+    return SystemSettings.get().portal_name
 
 
 def _get_smtp_connection():
@@ -35,15 +72,38 @@ def send_ticket_email(subject, recipient_email, template_name, context):
     from_email = f'{s.email_sender_name} <{s.email_sender_address or s.email_host_user}>'
     reply_to = [s.email_reply_to] if s.email_reply_to else []
 
-    context.setdefault('settings', s)
-    context.setdefault('frontend_url', _frontend_url())
+    ticket = context.get('ticket')
+    custom = None
+    if ticket is not None:
+        from .models import EmailTemplate
+        custom = EmailTemplate.objects.filter(notification_type=template_name, is_custom=True).first()
 
-    try:
-        html_message = render_to_string(f'emails/{template_name}.html', context)
-    except Exception:
-        html_message = None
+    if custom and custom.subject and custom.body:
+        placeholders = _SafeDict(_placeholder_context(ticket))
+        # Extra string values already in this call's context (e.g.
+        # escalated_by, escalation_reason for the escalation email) become
+        # placeholders too, on top of the common ticket fields above.
+        for key, value in context.items():
+            if key not in ('ticket', '_plain_text') and isinstance(value, str):
+                placeholders[key] = value
 
-    plain = context.get('_plain_text', '')
+        fmt = string.Formatter()
+        subject = fmt.vformat(custom.subject, (), placeholders)
+        plain = fmt.vformat(custom.body, (), placeholders)
+        html_message = render_to_string('emails/custom_email.html', {
+            'body_html': mark_safe(escape(plain).replace('\n', '<br>')),
+            'ticket_url': placeholders['ticket_url'],
+            'settings': s,
+            'frontend_url': _frontend_url(),
+        })
+    else:
+        context.setdefault('settings', s)
+        context.setdefault('frontend_url', _frontend_url())
+        try:
+            html_message = render_to_string(f'emails/{template_name}.html', context)
+        except Exception:
+            html_message = None
+        plain = context.get('_plain_text', '')
 
     try:
         msg = EmailMultiAlternatives(

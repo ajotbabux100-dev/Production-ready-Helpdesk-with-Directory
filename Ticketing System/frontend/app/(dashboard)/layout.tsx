@@ -6,8 +6,20 @@ import { Sidebar } from '@/app/components/layout/Sidebar'
 import { Topbar } from '@/app/components/layout/Topbar'
 import api from '@/app/lib/api'
 
-const IDLE_TIMEOUT_MS = 15 * 60 * 1000
+const DEFAULT_IDLE_TIMEOUT_MINUTES = 15
 const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart'] as const
+// How often real activity pings the server (see users/authentication.py's
+// IdleAwareJWTAuthentication) - much less frequent than activity itself,
+// since this only needs to keep the server-side clock roughly in sync with
+// the client-side one, not be perfectly real-time.
+const HEARTBEAT_INTERVAL_MS = 60 * 1000
+
+// Module-level (not state) so the idle-timeout effect and the generic
+// "user is gone, redirect to /login" effect below agree on the same target
+// URL no matter which one's router.replace() actually lands last - without
+// this, the generic effect's plain '/login' redirect can win the race and
+// silently strip the '?reason=idle' the idle timer set.
+let pendingLogoutReason: 'idle' | null = null
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -23,23 +35,40 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // browser back/forward).
   useEffect(() => { setMobileNavOpen(false) }, [pathname])
 
-  // Log out after 15 minutes with no mouse/keyboard/touch/scroll activity.
+  // Log out after N minutes with no mouse/keyboard/touch/scroll activity.
   // Without this, the axios interceptor's silent token refresh (api.ts) keeps
   // the session alive indefinitely as long as anything polls the API - it has
   // no notion of real user activity, so an idle tab never logs out on its own.
+  //
+  // This client-side timer is the primary UX (instant redirect, no round
+  // trip), but it can't be trusted alone - a frozen/backgrounded tab,
+  // disabled JS, or a tampered client would never log out. So real activity
+  // also pings /auth/heartbeat/ (throttled), which the server checks on
+  // every authenticated request (IdleAwareJWTAuthentication) - if this
+  // client-side timer somehow fails to fire, the next API call still gets
+  // rejected and forces a logout (see api.ts's 'idle_timeout' handling).
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastHeartbeatRef = useRef(0)
   useEffect(() => {
     if (!user) return
+    const timeoutMs = (user.effective_idle_timeout_minutes ?? DEFAULT_IDLE_TIMEOUT_MINUTES) * 60 * 1000
 
     const logout = async () => {
       try { await api.post('/auth/logout/', { refresh: refreshToken }) } catch {}
+      pendingLogoutReason = 'idle'
       clearAuth()
-      router.replace('/login')
+      router.replace('/login?reason=idle')
     }
 
     const resetTimer = () => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
-      idleTimerRef.current = setTimeout(logout, IDLE_TIMEOUT_MS)
+      idleTimerRef.current = setTimeout(logout, timeoutMs)
+
+      const now = Date.now()
+      if (now - lastHeartbeatRef.current > HEARTBEAT_INTERVAL_MS) {
+        lastHeartbeatRef.current = now
+        api.post('/auth/heartbeat/').catch(() => {})
+      }
     }
 
     resetTimer()
@@ -54,7 +83,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     // Only redirect once Zustand has finished rehydrating from localStorage.
     // Without this guard, a page refresh briefly shows user=null before
     // the persisted session is restored, causing a spurious logout redirect.
-    if (hasHydrated && !user) router.replace('/login')
+    if (hasHydrated && !user) {
+      router.replace(pendingLogoutReason === 'idle' ? '/login?reason=idle' : '/login')
+      pendingLogoutReason = null
+    }
   }, [hasHydrated, user, router])
 
   // While the store is rehydrating, render nothing to avoid a flash.

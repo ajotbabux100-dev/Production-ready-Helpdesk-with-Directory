@@ -54,6 +54,13 @@ class SystemSettings(models.Model):
         help_text='Shown in the sidebar footer and on the login page. Leave blank to hide.',
     )
 
+    # ---------- Security ----------
+    default_idle_timeout_minutes = models.PositiveIntegerField(
+        default=15,
+        help_text='Minutes of inactivity before automatic logout. A user with a personal '
+                   'override (Users -> Edit User) uses that value instead.',
+    )
+
     # ---------- Appearance ----------
     primary_color = models.CharField(max_length=7, default='#1e3a5f',
                                      help_text='Hex colour, e.g. #1e3a5f')

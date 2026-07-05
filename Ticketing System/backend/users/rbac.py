@@ -7,7 +7,9 @@ set of controllable pages/actions in the product changes with deployments,
 not with admin configuration.
 
 Modules get standard CRUD (view/add/edit/delete) except:
-- reports, audit: view only (no add/edit/delete concept)
+- reports: view only (no add/edit/delete concept)
+- audit: view/export/delete (no add/edit concept - "delete" gates the
+  bulk purge action, which always exports a backup in the same request)
 - settings: view/edit (no add/delete concept)
 - tickets: CRUD plus workflow actions that can't be inferred from CRUD
   (escalate, claim, internal_note, manage_escalated, view_all) - kept as
@@ -26,7 +28,7 @@ MODULE_ACTIONS = {
     'roles': CRUD,
     'vault': CRUD,
     'reports': ['view'],
-    'audit': ['view'],
+    'audit': ['view', 'export', 'delete'],
     'settings': ['view', 'edit'],
 }
 
@@ -49,6 +51,7 @@ ACTION_LABELS = {
     'add': 'Add',
     'edit': 'Edit',
     'delete': 'Delete',
+    'export': 'Export',
     'escalate': 'Escalate Tickets',
     'claim': 'Claim Pool Tickets',
     'internal_note': 'Post Internal Notes',

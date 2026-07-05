@@ -45,12 +45,27 @@ class LoginView(generics.GenericAPIView):
         if not user.is_active:
             return Response({'error': 'Account is disabled.'}, status=403)
         refresh = RefreshToken.for_user(user)
+        user.last_activity_at = timezone.now()
+        user.save(update_fields=['last_activity_at'])
         log_action(user, AuditLog.LOGIN, description=f'{user.email} logged in', request=request)
         return Response({
             'access': str(refresh.access_token),
             'refresh': str(refresh),
             'user': UserSerializer(user).data,
         })
+
+
+class HeartbeatView(generics.GenericAPIView):
+    """Called by the frontend on real user activity (throttled client-side)
+    to keep the server-side idle check (IdleAwareJWTAuthentication) alive.
+    Deliberately not tied to any other endpoint - see that module's
+    docstring for why routine API polling must NOT count as activity."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        request.user.last_activity_at = timezone.now()
+        request.user.save(update_fields=['last_activity_at'])
+        return Response({'status': 'ok'})
 
 
 class LogoutView(generics.GenericAPIView):
@@ -194,15 +209,30 @@ class UserViewSet(viewsets.ModelViewSet):
         return User.objects.filter(id=user.id, is_deleted=False)
 
     def perform_destroy(self, instance):
+        import re
         from django.utils import timezone
-        seq = User.objects.filter(is_deleted=True).count() + 1
-        alias = f'#name{seq}'
+
+        # Alias is scoped to the original first name, not a global counter -
+        # deleting "ajo" gives #ajo1, deleting a later user also named "ajo"
+        # gives #ajo2, rather than both/all deleted users sharing one
+        # sequence regardless of who they were.
+        base_name = re.sub(r'[^a-z0-9]', '', instance.first_name.lower()) or 'user'
+        prefix = f'#{base_name}'
+        existing_seqs = [
+            int(a[len(prefix):])
+            for a in User.objects.filter(is_deleted=True, deleted_alias__startswith=prefix)
+                .values_list('deleted_alias', flat=True)
+            if a[len(prefix):].isdigit()
+        ]
+        seq = max(existing_seqs, default=0) + 1
+        alias = f'{prefix}{seq}'
+
         instance.is_deleted = True
         instance.deleted_alias = alias
         instance.deleted_at = timezone.now()
         instance.first_name = alias
         instance.last_name = ''
-        instance.email = f'deleted_name{seq}_{instance.id}@deleted.invalid'
+        instance.email = f'deleted_{base_name}{seq}_{instance.id}@deleted.invalid'
         instance.phone = ''
         instance.is_active = False
         instance.department = None

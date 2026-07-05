@@ -3,8 +3,32 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
-from .models import Notification
-from .serializers import NotificationSerializer
+from .models import Notification, EmailTemplate, EMAIL_TEMPLATE_DEFAULTS
+from .serializers import NotificationSerializer, EmailTemplateSerializer
+from users.permissions import require_perm
+
+
+class EmailTemplateViewSet(viewsets.ModelViewSet):
+    """Lets an admin customize the subject/body of each system email.
+    One row per notification type - list() lazily creates any missing rows
+    (seeded with the built-in default text) so the full set of 8 always
+    shows up without needing a data migration."""
+    serializer_class = EmailTemplateSerializer
+    permission_classes = [require_perm('settings', 'edit')]
+    lookup_field = 'notification_type'
+    http_method_names = ['get', 'patch', 'head', 'options']
+
+    def get_queryset(self):
+        existing = set(EmailTemplate.objects.values_list('notification_type', flat=True))
+        missing = set(EMAIL_TEMPLATE_DEFAULTS) - existing
+        for notification_type in missing:
+            defaults = EMAIL_TEMPLATE_DEFAULTS[notification_type]
+            EmailTemplate.objects.create(
+                notification_type=notification_type,
+                subject=defaults['subject'],
+                body=defaults['body'],
+            )
+        return EmailTemplate.objects.all().order_by('notification_type')
 
 
 class NotificationViewSet(viewsets.ReadOnlyModelViewSet):

@@ -1,11 +1,14 @@
 'use client'
 import { useEffect, useState } from 'react'
 import api from '@/app/lib/api'
+import { downloadFile, postAndDownloadFile } from '@/app/lib/download'
+import { useHasPerm } from '@/app/lib/store'
 import { Card } from '@/app/components/ui/card'
 import { Input } from '@/app/components/ui/input'
 import { Button } from '@/app/components/ui/button'
+import { Modal } from '@/app/components/ui/modal'
 import { formatDate } from '@/app/lib/utils'
-import { Shield, Search } from 'lucide-react'
+import { Shield, Download, Trash2, AlertTriangle } from 'lucide-react'
 
 interface AuditLog {
   id: number
@@ -21,17 +24,31 @@ interface AuditLog {
 }
 
 export default function AuditPage() {
+  const canExport = useHasPerm('audit', 'export')
+  const canDelete = useHasPerm('audit', 'delete')
   const [logs, setLogs] = useState<AuditLog[]>([])
   const [count, setCount] = useState(0)
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [backupLoading, setBackupLoading] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+
+  // Shared with fetchLogs so "what's on screen" always matches "what gets
+  // backed up / deleted" - excludes login/logout the same way the table does.
+  const filterParams = () => {
+    const params = new URLSearchParams({ exclude_actions: 'login,logout' })
+    if (search) params.set('search', search)
+    return params
+  }
 
   const fetchLogs = async () => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({ page: String(page), exclude_actions: 'login,logout' })
-      if (search) params.set('search', search)
+      const params = filterParams()
+      params.set('page', String(page))
       const res = await api.get(`/audit/?${params}`)
       setLogs(res.data.results ?? res.data)
       setCount(res.data.count ?? 0)
@@ -41,13 +58,52 @@ export default function AuditPage() {
 
   useEffect(() => { fetchLogs() }, [page, search])
 
+  const handleBackup = async () => {
+    setBackupLoading(true)
+    try {
+      await downloadFile(`/audit/export/?${filterParams()}`, 'audit_log_backup.xlsx')
+    } finally { setBackupLoading(false) }
+  }
+
+  const handleDelete = async () => {
+    setDeleteLoading(true)
+    setDeleteError('')
+    try {
+      await postAndDownloadFile(`/audit/export-and-delete/?${filterParams()}`, 'audit_log_backup_before_delete.xlsx')
+      setConfirmOpen(false)
+      setPage(1)
+      fetchLogs()
+    } catch (err: any) {
+      setDeleteError(err.response?.data?.error || 'Failed to delete logs.')
+    } finally { setDeleteLoading(false) }
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <Shield className="w-6 h-6 text-blue-900" />
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Audit Log</h1>
-          <p className="text-sm text-gray-500">Complete record of all system actions</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Shield className="w-6 h-6 text-blue-900" />
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Audit Log</h1>
+            <p className="text-sm text-gray-500">Complete record of all system actions</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {canExport && (
+            <Button variant="outline" size="sm" loading={backupLoading} onClick={handleBackup} className="gap-1.5">
+              <Download className="w-3.5 h-3.5" /> Backup
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setDeleteError(''); setConfirmOpen(true) }}
+              className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Delete Logs
+            </Button>
+          )}
         </div>
       </div>
 
@@ -102,6 +158,32 @@ export default function AuditPage() {
           </div>
         )}
       </Card>
+
+      <Modal open={confirmOpen} onClose={() => setConfirmOpen(false)} title="Delete Audit Logs" size="sm">
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-amber-800">
+              This deletes {search ? 'every log matching your current search' : 'every log currently shown'}
+              {' '}(excluding login/logout events). A backup file will download to your computer
+              automatically before anything is deleted — this action cannot be undone otherwise.
+            </p>
+          </div>
+          {deleteError && (
+            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{deleteError}</p>
+          )}
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={deleteLoading}>Cancel</Button>
+            <Button
+              onClick={handleDelete}
+              loading={deleteLoading}
+              className="bg-red-600 hover:bg-red-700 text-white border-0"
+            >
+              <Trash2 className="w-4 h-4 mr-1.5" /> Backup &amp; Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

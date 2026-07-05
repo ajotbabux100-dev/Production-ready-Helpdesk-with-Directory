@@ -69,6 +69,19 @@ class User(AbstractBaseUser, PermissionsMixin):
         related_name='members',
     )
     avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
+    idle_timeout_minutes = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Overrides the system default idle-logout time for this user. '
+                   'Leave blank to use the default (Settings -> Portal).',
+    )
+    # Server-side idle enforcement (IdleAwareJWTAuthentication) - deliberately
+    # separate from the frontend's own JS timer, which can't be trusted alone
+    # (a frozen/backgrounded tab, disabled JS, or a tampered client would
+    # never log out). Only updated by the /auth/heartbeat/ endpoint, which
+    # the frontend calls on real activity - NOT on every API request, or
+    # routine background polling (e.g. the notification-count poll) would
+    # silently keep sessions alive forever regardless of real user activity.
+    last_activity_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False)

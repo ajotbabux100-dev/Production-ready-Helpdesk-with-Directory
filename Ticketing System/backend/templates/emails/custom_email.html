@@ -1,0 +1,7 @@
+{% extends "emails/base.html" %}
+{% block content %}
+<div class="ticket-box">
+  <p>{{ body_html }}</p>
+</div>
+<a href="{{ ticket_url }}" class="btn">View Ticket</a>
+{% endblock %}

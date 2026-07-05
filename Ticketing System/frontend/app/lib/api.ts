@@ -16,7 +16,7 @@ api.interceptors.request.use((config) => {
 // Wipe ALL auth state (Zustand store + raw localStorage keys) and redirect to login.
 // Calling the Zustand store directly avoids the partial-clear bug where
 // auth-storage still holds stale user data after tokens are removed.
-function forceLogout() {
+function forceLogout(reason?: 'idle') {
   try {
     // Dynamically access the store singleton without a React hook
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -28,7 +28,7 @@ function forceLogout() {
     localStorage.removeItem('refresh_token')
     localStorage.removeItem('auth-storage')
   }
-  window.location.href = '/login'
+  window.location.href = reason ? `/login?reason=${reason}` : '/login'
 }
 
 // Ensure only one token refresh is in flight at a time.
@@ -38,6 +38,13 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const original = error.config
+    if (error.response?.status === 401 && error.response?.data?.code === 'idle_timeout') {
+      // Server-side idle enforcement (IdleAwareJWTAuthentication) - a fresh
+      // access token wouldn't help here, the *account* is idle-expired, not
+      // just the token, so skip the refresh dance and log out immediately.
+      forceLogout('idle')
+      return Promise.reject(error)
+    }
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true
       const refresh = localStorage.getItem('refresh_token')

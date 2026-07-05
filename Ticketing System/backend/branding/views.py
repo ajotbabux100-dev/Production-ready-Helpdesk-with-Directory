@@ -1,8 +1,17 @@
+import io
+import os
+import sqlite3
+import tempfile
+import zipfile
+
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from django.conf import settings as dj_settings
 from django.core.cache import cache
+from django.http import HttpResponse
+from django.utils import timezone
 from .models import SystemSettings
 from .serializers import SystemSettingsSerializer
 
@@ -113,3 +122,61 @@ class TestEmailView(APIView):
             return Response({'success': True, 'message': f'Test email sent to {recipient}'})
         except Exception as e:
             return Response({'success': False, 'error': str(e)}, status=400)
+
+
+class FullBackupView(APIView):
+    """GET /api/branding/full-backup/ - one-click download of the entire
+    system: a consistent snapshot of the database plus every media file
+    (attachments, avatars, branding logos), bundled into a single .zip.
+
+    Uses sqlite3's own backup API rather than copying db.sqlite3 directly -
+    a plain file copy can land mid-write and produce a corrupt/inconsistent
+    snapshot; .backup() is safe to run against a live, in-use database."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not request.user.has_perm_key('settings', 'edit'):
+            return Response({'error': 'You do not have permission to create a backup.'}, status=403)
+
+        db_config = dj_settings.DATABASES['default']
+        if db_config['ENGINE'] != 'django.db.backends.sqlite3':
+            return Response(
+                {'error': 'Full backup is only implemented for the SQLite database engine.'},
+                status=400,
+            )
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            db_path = db_config['NAME']
+            if os.path.exists(db_path):
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    tmp_path = os.path.join(tmp_dir, 'db.sqlite3')
+                    src_conn = sqlite3.connect(db_path)
+                    dst_conn = sqlite3.connect(tmp_path)
+                    try:
+                        src_conn.backup(dst_conn)
+                    finally:
+                        dst_conn.close()
+                        src_conn.close()
+                    zf.write(tmp_path, arcname='db.sqlite3')
+
+            media_root = str(dj_settings.MEDIA_ROOT)
+            for root, _dirs, files in os.walk(media_root):
+                for filename in files:
+                    full_path = os.path.join(root, filename)
+                    arcname = os.path.join('media', os.path.relpath(full_path, media_root))
+                    zf.write(full_path, arcname=arcname)
+
+            manifest = (
+                f'Helpdesk full backup\n'
+                f'Created: {timezone.now().isoformat()}\n'
+                f'By: {request.user.email}\n'
+                f'Contains: db.sqlite3 (consistent snapshot) + media/ (all uploaded files)\n'
+            )
+            zf.writestr('backup_manifest.txt', manifest)
+
+        buffer.seek(0)
+        filename = f'helpdesk_full_backup_{timezone.now().strftime("%Y-%m-%d_%H%M")}.zip'
+        response = HttpResponse(buffer.getvalue(), content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
