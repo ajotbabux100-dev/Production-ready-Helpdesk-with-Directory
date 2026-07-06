@@ -106,8 +106,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <Sidebar mobileOpen={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
         <Topbar onMenuClick={() => setMobileNavOpen((o) => !o)} />
       </div>
-      <main className="lg:ml-64 pt-14 min-h-screen print:ml-0 print:pt-0">
-        <div className="p-4 sm:p-6 print:p-0">
+      <main className="lg:ml-64 pt-14 min-h-screen print:ml-0 print:pt-0 overflow-x-hidden">
+        <div className="p-4 sm:p-6 print:p-0 max-w-full">
           {children}
         </div>
       </main>

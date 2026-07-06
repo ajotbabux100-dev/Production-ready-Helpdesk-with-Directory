@@ -420,7 +420,7 @@ export function DepartmentsSection() {
 
           <div className="space-y-2">
             <p className="text-sm font-medium text-gray-700">Ticket Routing Mode</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {([
                 { value: 'manager', label: 'Manager Assignment', desc: 'Manager assigns each ticket to a specific agent.' },
                 { value: 'pool', label: 'Department Pool', desc: 'All members see new tickets. Anyone can claim and resolve.' },
@@ -436,7 +436,7 @@ export function DepartmentsSection() {
 
           <div className="space-y-2">
             <p className="text-sm font-medium text-gray-700">@Mention Scope</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {([
                 { value: 'all', label: 'All Users', desc: 'Anyone in the system can be @mentioned in ticket comments.' },
                 { value: 'department', label: 'Department Only', desc: 'Only members of this department appear in the @mention picker.' },

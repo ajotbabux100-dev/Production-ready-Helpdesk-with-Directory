@@ -14,7 +14,7 @@ function MasterRow({ icon: Icon, title, description, children }: {
   children: React.ReactNode
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+    <div className="flex items-center justify-between gap-4 px-4 py-3.5 flex-wrap">
       <div className="flex items-start gap-3 min-w-0">
         <Icon className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
         <div className="min-w-0">

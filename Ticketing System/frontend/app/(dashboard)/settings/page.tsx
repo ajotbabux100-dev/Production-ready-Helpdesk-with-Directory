@@ -479,9 +479,9 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
             <Settings className="w-5 h-5 text-blue-900" />
           </div>
           <div>
@@ -489,7 +489,7 @@ export default function SettingsPage() {
             <p className="text-sm text-gray-500">Branding, ticket series, email and form configuration</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           {saveError && (
             <span className="text-sm text-red-600 font-medium max-w-xs truncate" title={saveError}>{saveError}</span>
           )}
@@ -504,25 +504,32 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex gap-1 border-b border-gray-200">
-        {TABS.map((tab) => {
-          const Icon = tab.icon
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === tab.id
-                  ? 'border-blue-900 text-blue-900'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              {tab.label}
-            </button>
-          )
-        })}
+      {/* Tab bar - scrolls independently of the page on narrow screens instead
+          of forcing the whole layout to overflow horizontally. Edge fades +
+          a styled thumb (see .tabs-scroll in globals.css) hint that it scrolls,
+          instead of just cutting off at a plain default scrollbar. */}
+      <div className="relative">
+        <div className="tabs-scroll flex gap-1 border-b border-gray-200 overflow-x-auto">
+          {TABS.map((tab) => {
+            const Icon = tab.icon
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors flex-shrink-0 whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? 'border-blue-900 text-blue-900'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {tab.label}
+              </button>
+            )
+          })}
+        </div>
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-gray-50 to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-gray-50 to-transparent" />
       </div>
 
       {/* ── Organisation ── */}
@@ -560,11 +567,11 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input label="Company Name *" value={settings.company_name || ''} onChange={(e) => set({ company_name: e.target.value })} />
                 <Input label="Tagline" placeholder="e.g. Your IT partner" value={settings.company_tagline || ''} onChange={(e) => set({ company_tagline: e.target.value })} />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input label="Support Email" type="email" value={settings.company_email || ''} onChange={(e) => set({ company_email: e.target.value })} />
                 <Input label="Phone" value={settings.company_phone || ''} onChange={(e) => set({ company_phone: e.target.value })} />
               </div>
@@ -576,7 +583,7 @@ export default function SettingsPage() {
           <Card>
             <CardHeader><CardTitle>Appearance</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 flex-wrap">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Primary Colour</label>
                   <div className="flex items-center gap-3">
@@ -780,7 +787,7 @@ export default function SettingsPage() {
                 <p className="text-sm text-blue-600 ml-2">This is what your next ticket number will look like</p>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <Input
                   label="Prefix"
                   placeholder="TKT"
@@ -854,7 +861,7 @@ export default function SettingsPage() {
           <Card>
             <CardHeader><CardTitle>Pattern Examples</CardTitle></CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {[
                   { name: 'Default', prefix: 'TKT', sep: '-', year: true, digits: 5, fmt: 'YYYY' },
                   { name: 'Incident', prefix: 'INC', sep: '-', year: false, digits: 6, fmt: 'YYYY' },
@@ -896,7 +903,7 @@ export default function SettingsPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
                   label="SMTP Host"
                   placeholder="smtp.office365.com"
@@ -912,7 +919,7 @@ export default function SettingsPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
                   label="Username / Login Email"
                   type="email"
@@ -938,7 +945,7 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <div className="flex gap-6">
+              <div className="flex flex-wrap gap-6">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="radio"
@@ -980,14 +987,14 @@ export default function SettingsPage() {
                 </label>
               </div>
 
-              <div className="flex items-center justify-between pt-2">
+              <div className="flex items-center justify-between pt-2 flex-wrap gap-3">
                 <div>
                   <p className="text-sm font-medium text-gray-700">Test email recipient</p>
                   <p className="text-xs text-gray-400">Leave blank to send to your account email</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <input
-                    className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-full sm:w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder={user?.email || 'you@example.com'}
                     value={testEmailRecipient}
                     onChange={(e) => setTestEmailRecipient(e.target.value)}
@@ -1014,7 +1021,7 @@ export default function SettingsPage() {
           <Card>
             <CardHeader><CardTitle>Sender Identity</CardTitle></CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
                   label="Sender Name"
                   placeholder="Helpdesk"
