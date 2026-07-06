@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useAuthStore } from '@/app/lib/store'
 import { Sidebar } from '@/app/components/layout/Sidebar'
 import { Topbar } from '@/app/components/layout/Topbar'
+import { NotificationToasts } from '@/app/components/notifications/NotificationToasts'
 import api from '@/app/lib/api'
 
 const DEFAULT_IDLE_TIMEOUT_MINUTES = 15
@@ -105,6 +106,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="print:hidden">
         <Sidebar mobileOpen={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
         <Topbar onMenuClick={() => setMobileNavOpen((o) => !o)} />
+        <NotificationToasts />
       </div>
       <main className="lg:ml-64 pt-14 min-h-screen print:ml-0 print:pt-0 overflow-x-hidden">
         <div className="p-4 sm:p-6 print:p-0 max-w-full">

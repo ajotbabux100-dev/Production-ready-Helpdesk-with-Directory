@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import api from '@/app/lib/api'
 import { Notification } from '@/app/lib/types'
-import { Bell, Check, CheckCheck, Ticket, MessageSquare, AlertTriangle, UserCheck, Clock, X } from 'lucide-react'
+import { Bell, Check, CheckCheck, Ticket, MessageSquare, AlertTriangle, UserCheck, Clock, X, Volume2, VolumeX } from 'lucide-react'
+import { isNotificationSoundEnabled, setNotificationSoundEnabled, playNotificationSound } from '@/app/lib/notificationSound'
 
 const TYPE_ICON: Record<string, React.ReactNode> = {
   ticket_created:   <Ticket className="w-4 h-4" />,
@@ -47,6 +48,16 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<Filter>('all')
   const [markingAll, setMarkingAll] = useState(false)
+  const [soundEnabled, setSoundEnabled] = useState(true)
+
+  useEffect(() => { setSoundEnabled(isNotificationSoundEnabled()) }, [])
+
+  const toggleSound = () => {
+    const next = !soundEnabled
+    setSoundEnabled(next)
+    setNotificationSoundEnabled(next)
+    if (next) playNotificationSound()
+  }
 
   const fetchNotifications = async () => {
     const res = await api.get('/notifications/')
@@ -102,16 +113,27 @@ export default function NotificationsPage() {
           </div>
         </div>
 
-        {unreadCount > 0 && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={markAllRead}
-            disabled={markingAll}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors disabled:opacity-50"
+            onClick={toggleSound}
+            title={soundEnabled ? 'Turn off notification sound' : 'Turn on notification sound'}
+            className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-600 bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"
           >
-            <CheckCheck className="w-4 h-4" />
-            {markingAll ? 'Marking…' : 'Mark all read'}
+            {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            <span className="hidden sm:inline">Sound {soundEnabled ? 'on' : 'off'}</span>
           </button>
-        )}
+
+          {unreadCount > 0 && (
+            <button
+              onClick={markAllRead}
+              disabled={markingAll}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors disabled:opacity-50"
+            >
+              <CheckCheck className="w-4 h-4" />
+              {markingAll ? 'Marking…' : 'Mark all read'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filter tabs */}

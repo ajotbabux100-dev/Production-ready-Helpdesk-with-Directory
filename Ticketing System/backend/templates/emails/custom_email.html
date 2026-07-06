@@ -1,7 +1,7 @@
 {% extends "emails/base.html" %}
 {% block content %}
-<div class="ticket-box">
+<div class="ticket-box" style="background:#f8f9fa; border-left:4px solid #1e3a5f; padding:16px; margin:20px 0; border-radius:4px;">
   <p>{{ body_html }}</p>
 </div>
-<a href="{{ ticket_url }}" class="btn">View Ticket</a>
+<a href="{{ ticket_url }}" class="btn" style="display:inline-block; margin:20px 0; padding:12px 28px; background:#1e3a5f; color:#ffffff; text-decoration:none; border-radius:6px; font-weight:bold; font-size:14px;">View Ticket</a>
 {% endblock %}

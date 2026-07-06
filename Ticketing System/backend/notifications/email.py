@@ -188,6 +188,31 @@ def notify_ticket_created(ticket):
             {**ctx},
         )
 
+    # Pool routing with no specific assignee: the ticket only being visible
+    # in a shared queue isn't enough - without this, nobody gets a personal
+    # heads-up and it can sit unnoticed. Notify every eligible department
+    # member individually, same as a direct assignment would.
+    dept = ticket.department
+    if dept and dept.routing_mode == 'pool' and not ticket.assigned_to_id:
+        from users.models import User
+        members = (
+            User.objects.filter(department=dept, is_active=True)
+            .exclude(id=ticket.requester_id)
+            .select_related('role')
+        )
+        pool_title = f'New ticket available: {ticket.ticket_number}'
+        pool_message = f'"{ticket.title}" was submitted to {dept.name} and is open for anyone to claim.'
+        for member in members:
+            if not (member.is_admin or member.has_perm_key('tickets', 'claim')):
+                continue
+            _push(member, ticket, 'ticket_assigned', pool_title, pool_message)
+            send_ticket_email(
+                f'[{ticket.ticket_number}] New ticket available in {dept.name}',
+                member.email,
+                'ticket_dept_notification',
+                {**ctx},
+            )
+
 
 def notify_ticket_assigned(ticket):
     if not _notify_enabled('notify_on_ticket_assigned'):

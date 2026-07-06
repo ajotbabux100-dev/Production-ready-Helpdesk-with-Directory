@@ -2,7 +2,7 @@
 {% block content %}
 <p>Dear {{ ticket.requester.first_name }},</p>
 <p>Your support ticket has been successfully submitted. Our team will review and respond shortly.</p>
-<div class="ticket-box">
+<div class="ticket-box" style="background:#f8f9fa; border-left:4px solid #1e3a5f; padding:16px; margin:20px 0; border-radius:4px;">
   <p><strong>Ticket Number:</strong> {{ ticket.ticket_number }}</p>
   <p><strong>Subject:</strong> {{ ticket.title }}</p>
   {% if category_display %}
@@ -21,9 +21,9 @@
   {% endif %}
 </div>
 <p><strong>Description:</strong></p>
-<div class="ticket-box">
+<div class="ticket-box" style="background:#f8f9fa; border-left:4px solid #1e3a5f; padding:16px; margin:20px 0; border-radius:4px;">
   <p>{{ ticket.description|linebreaksbr }}</p>
 </div>
-<a href="{{ frontend_url }}/tickets/{{ ticket.id }}" class="btn">View Ticket</a>
+<a href="{{ frontend_url }}/tickets/{{ ticket.id }}" class="btn" style="display:inline-block; margin:20px 0; padding:12px 28px; background:#1e3a5f; color:#ffffff; text-decoration:none; border-radius:6px; font-weight:bold; font-size:14px;">View Ticket</a>
 <p>If you need to add more information or attachments, please log in to the portal and update your ticket.</p>
 {% endblock %}

@@ -3,18 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<!--[if mso]>
+<noscript>
+<xml>
+<o:OfficeDocumentSettings>
+<o:PixelsPerInch>96</o:PixelsPerInch>
+</o:OfficeDocumentSettings>
+</xml>
+</noscript>
+<![endif]-->
 <style>
   body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
-  .container { max-width: 600px; margin: 30px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-  .header { background: #1e3a5f; color: white; padding: 24px 32px; }
-  .header h1 { margin: 0; font-size: 20px; }
-  .header p { margin: 4px 0 0; font-size: 13px; opacity: 0.8; }
-  .body { padding: 32px; color: #333; }
+  table { border-collapse: collapse; }
+  .body-text p { margin: 0 0 12px; font-size: 14px; line-height: 1.5; color: #333333; }
   .ticket-box { background: #f8f9fa; border-left: 4px solid #1e3a5f; padding: 16px; margin: 20px 0; border-radius: 4px; }
   .ticket-box p { margin: 4px 0; font-size: 14px; }
   .ticket-box strong { color: #1e3a5f; }
-  .btn { display: inline-block; margin: 20px 0; padding: 12px 28px; background: #1e3a5f; color: white; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; }
-  .footer { background: #f4f4f4; padding: 16px 32px; font-size: 12px; color: #888; text-align: center; }
+  .btn { display: inline-block; margin: 20px 0; padding: 12px 28px; background: #1e3a5f; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; }
   .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; }
   .badge-critical { background: #fee2e2; color: #b91c1c; }
   .badge-high { background: #ffedd5; color: #c2410c; }
@@ -22,19 +28,38 @@
   .badge-low { background: #dcfce7; color: #166534; }
 </style>
 </head>
-<body>
-<div class="container">
-  <div class="header">
-    <h1>{% if settings.portal_name %}{{ settings.portal_name }}{% else %}Helpdesk & Ticketing System{% endif %}</h1>
-    <p>{% if settings.company_name %}{{ settings.company_name }} — {% endif %}Support Portal Notification</p>
-  </div>
-  <div class="body">
-    {% block content %}{% endblock %}
-  </div>
-  <div class="footer">
-    This is an automated notification. Please do not reply to this email.<br>
-    To view your ticket, visit <a href="{{ frontend_url }}">the support portal</a>.
-  </div>
-</div>
+<body style="margin:0; padding:0; background:#f4f4f4;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f4f4;">
+  <tr>
+    <td align="center" style="padding: 30px 16px;">
+      <!--[if mso]>
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"><tr><td>
+      <![endif]-->
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" align="center" style="width:600px; max-width:600px; background:#ffffff; border-radius:8px;">
+        <tr>
+          <td bgcolor="#1e3a5f" style="background-color:#1e3a5f; padding:24px 32px; font-family:Arial,sans-serif;">
+            <h1 style="margin:0; font-size:20px; color:#ffffff; font-family:Arial,sans-serif;">{% if settings.portal_name %}{{ settings.portal_name }}{% else %}Helpdesk & Ticketing System{% endif %}</h1>
+            <p style="margin:4px 0 0; font-size:13px; color:#ffffff; font-family:Arial,sans-serif;">{% if settings.company_name %}{{ settings.company_name }} — {% endif %}Support Portal Notification</p>
+          </td>
+        </tr>
+        <tr>
+          <td class="body-text" style="padding:32px; color:#333333; font-family:Arial,sans-serif; font-size:14px; line-height:1.5;">
+            {% block content %}{% endblock %}
+          </td>
+        </tr>
+        <tr>
+          <td bgcolor="#f4f4f4" style="background-color:#f4f4f4; padding:16px 32px; font-size:12px; color:#888888; text-align:center; font-family:Arial,sans-serif;">
+            This is an automated notification. Please do not reply to this email.<br>
+            To view your ticket, visit <a href="{{ frontend_url }}" style="color:#1e3a5f;">the support portal</a>.
+            {% if settings.powered_by_text %}<br><span style="display:inline-block; margin-top:8px; color:#aaaaaa;">{{ settings.powered_by_text }}</span>{% endif %}
+          </td>
+        </tr>
+      </table>
+      <!--[if mso]>
+      </td></tr></table>
+      <![endif]-->
+    </td>
+  </tr>
+</table>
 </body>
 </html>
