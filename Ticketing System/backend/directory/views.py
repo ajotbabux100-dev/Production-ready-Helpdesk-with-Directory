@@ -11,7 +11,7 @@ from .serializers import (
     PortalSerializer, PortalCategorySerializer,
 )
 from users.permissions import require_perm
-from excel_io import build_template, read_upload, BadUpload
+from excel_io import build_template, read_upload, build_import_report_base64, BadUpload
 from excel_io.core import row_cell
 
 
@@ -64,6 +64,11 @@ class StaffDirectoryEntryViewSet(viewsets.ModelViewSet):
     serializer_class = StaffDirectoryEntrySerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['tab']
+    # The frontend renders this as a single flat table with no page-through
+    # controls (unlike Tickets, which does), so it needs the whole tab's
+    # entries in one response - the default 20-per-page cap was silently
+    # hiding everything past the first page.
+    pagination_class = None
 
     def get_permissions(self):
         if self.action in ['create', 'import_excel']:
@@ -88,7 +93,8 @@ class StaffDirectoryEntryViewSet(viewsets.ModelViewSet):
             f'Master upload template for the directory tab "{tab.name}".',
             'Fill in one row per entry below the header row. Do not rename, reorder or remove the header columns.',
             f'"{headers[0]}" is used as the matching key: if a row\'s "{headers[0]}" value matches an existing '
-            'entry exactly, that entry is updated instead of a new one being created.',
+            'entry exactly, that row is skipped - this import only creates new entries, it never modifies '
+            'existing ones.',
             'Leave a cell blank to leave that detail empty.',
         ]
         return build_template(f'directory_{tab.name}_template.xlsx', headers, notes=notes)
@@ -123,8 +129,8 @@ class StaffDirectoryEntryViewSet(viewsets.ModelViewSet):
             if key_val:
                 existing_by_key[key_val] = entry
 
-        created = updated = 0
-        errors = []
+        created = skipped = 0
+        created_rows, skipped_rows, errors = [], [], []
         for i, row in enumerate(rows, start=2):
             row_values = {}
             for h in headers:
@@ -136,24 +142,31 @@ class StaffDirectoryEntryViewSet(viewsets.ModelViewSet):
                 continue
             key_val = row_values.get(str(key_field.id), '').strip()
             try:
+                # Create-only import: a row matching an existing entry is
+                # skipped, never used to modify that entry.
                 existing = existing_by_key.get(key_val) if key_val else None
                 if existing:
-                    existing.values.update(row_values)
-                    existing.save(update_fields=['values'])
-                    updated += 1
+                    skipped += 1
+                    skipped_rows.append({'row': i, 'data': row})
                 else:
                     entry = StaffDirectoryEntry.objects.create(tab=tab, values=row_values)
                     if key_val:
                         existing_by_key[key_val] = entry
                     created += 1
+                    created_rows.append({'row': i, 'data': row})
             except Exception as e:
-                errors.append({'row': i, 'error': str(e)})
+                errors.append({'row': i, 'error': str(e), 'data': row})
 
-        return Response({'created': created, 'updated': updated, 'errors': errors})
+        result = {'created': created, 'skipped': skipped, 'errors': errors}
+        if created_rows or skipped_rows or errors:
+            result['import_report_base64'] = build_import_report_base64(headers, created_rows, skipped_rows, errors)
+            result['import_report_filename'] = f'{tab.name}_import_report.xlsx'
+        return Response(result)
 
 
 class PortalCategoryViewSet(viewsets.ModelViewSet):
     serializer_class = PortalCategorySerializer
+    pagination_class = None
 
     def get_permissions(self):
         if self.action == 'create':
@@ -178,6 +191,7 @@ class PortalViewSet(viewsets.ModelViewSet):
     serializer_class = PortalSerializer
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['category']
+    pagination_class = None
 
     def get_permissions(self):
         if self.action in ['create', 'import_excel']:
@@ -209,7 +223,7 @@ class PortalViewSet(viewsets.ModelViewSet):
             'URL must start with http:// or https://',
             'Category is optional. If the category name does not exist yet, it will be created automatically.',
             '"Name" is used as the matching key: if a row\'s Name matches an existing portal exactly, that '
-            'portal is updated (URL and Category) instead of a new one being created.',
+            'row is skipped - this import only creates new portals, it never modifies existing ones.',
         ]
         sample_rows = [['Company Intranet', 'https://intranet.example.com', 'Internal Tools']]
         return build_template('portals_template.xlsx', headers, notes=notes, sample_rows=sample_rows)
@@ -231,8 +245,8 @@ class PortalViewSet(viewsets.ModelViewSet):
                     status=400,
                 )
 
-        created = updated = 0
-        errors = []
+        created = skipped = 0
+        created_rows, skipped_rows, errors = [], [], []
         for i, row in enumerate(rows, start=2):
             name = row_cell(headers, row, 'Name')
             url = row_cell(headers, row, 'URL')
@@ -240,27 +254,30 @@ class PortalViewSet(viewsets.ModelViewSet):
             if not name and not url:
                 continue
             if not name:
-                errors.append({'row': i, 'error': 'Name is required.'})
+                errors.append({'row': i, 'error': 'Name is required.', 'data': row})
                 continue
             if not (url.startswith('http://') or url.startswith('https://')):
-                errors.append({'row': i, 'error': 'URL must start with http:// or https://'})
+                errors.append({'row': i, 'error': 'URL must start with http:// or https://', 'data': row})
                 continue
 
-            category = None
-            if category_name:
-                category, _ = PortalCategory.objects.get_or_create(name=category_name)
-
             try:
-                portal = Portal.objects.filter(name=name).first()
-                if portal:
-                    portal.url = url
-                    portal.category = category
-                    portal.save(update_fields=['url', 'category', 'updated_at'])
-                    updated += 1
+                # Create-only import: a row matching an existing portal
+                # (by name) is skipped, never used to modify that portal.
+                if Portal.objects.filter(name=name).exists():
+                    skipped += 1
+                    skipped_rows.append({'row': i, 'data': row})
                 else:
+                    category = None
+                    if category_name:
+                        category, _ = PortalCategory.objects.get_or_create(name=category_name)
                     Portal.objects.create(name=name, url=url, category=category, created_by=request.user)
                     created += 1
+                    created_rows.append({'row': i, 'data': row})
             except Exception as e:
-                errors.append({'row': i, 'error': str(e)})
+                errors.append({'row': i, 'error': str(e), 'data': row})
 
-        return Response({'created': created, 'updated': updated, 'errors': errors})
+        result = {'created': created, 'skipped': skipped, 'errors': errors}
+        if created_rows or skipped_rows or errors:
+            result['import_report_base64'] = build_import_report_base64(headers, created_rows, skipped_rows, errors)
+            result['import_report_filename'] = 'portals_import_report.xlsx'
+        return Response(result)

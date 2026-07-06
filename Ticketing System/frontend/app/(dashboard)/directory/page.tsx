@@ -3,12 +3,12 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import api from '@/app/lib/api'
 import { StaffDirectoryEntry, DirectoryTab, Portal, PortalCategory } from '@/app/lib/types'
-import { useAuthStore, useHasPerm } from '@/app/lib/store'
+import { useHasPerm } from '@/app/lib/store'
 import { Button } from '@/app/components/ui/button'
 import { Input } from '@/app/components/ui/input'
 import { Select } from '@/app/components/ui/select'
 import { Modal } from '@/app/components/ui/modal'
-import { BookOpen, Link as LinkIcon, Plus, Edit, Trash2, ExternalLink, Settings2, Upload } from 'lucide-react'
+import { BookOpen, Link as LinkIcon, Plus, Edit, Trash2, ExternalLink, Settings2, Upload, Search, X } from 'lucide-react'
 
 export default function DirectoryPage() {
   const isAdmin = useHasPerm('settings', 'view')
@@ -27,6 +27,7 @@ export default function DirectoryPage() {
   const [categories, setCategories] = useState<PortalCategory[]>([])
   const [activeCategory, setActiveCategory] = useState<number | 'all'>('all')
   const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
 
   const activeTabObj = typeof activeTab === 'number' ? tabs.find((t) => t.id === activeTab) ?? null : null
   const activeFields = activeTabObj?.custom_fields ?? []
@@ -76,6 +77,7 @@ export default function DirectoryPage() {
   useEffect(() => {
     if (activeTab === null) return
     setLoading(true)
+    setSearch('')
     if (activeTab === 'portals') {
       fetchPortals()
       fetchCategories()
@@ -85,7 +87,12 @@ export default function DirectoryPage() {
   }, [activeTab])
 
   const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name }))
-  const visiblePortals = activeCategory === 'all' ? portals : portals.filter((p) => p.category === activeCategory)
+  const searchLower = search.trim().toLowerCase()
+  const visiblePortals = (activeCategory === 'all' ? portals : portals.filter((p) => p.category === activeCategory))
+    .filter((p) => !searchLower || [p.name, p.url, p.category_name].some((v) => v?.toLowerCase().includes(searchLower)))
+  const visibleEntries = entries.filter((e) =>
+    !searchLower || activeFields.some((f) => (e.values[String(f.id)] || '').toLowerCase().includes(searchLower))
+  )
 
   const openCreateEntry = () => {
     setEditingEntry(null)
@@ -226,6 +233,28 @@ export default function DirectoryPage() {
         )}
       </div>
 
+      {(activeTab === 'portals' || typeof activeTab === 'number') && (
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(ev) => setSearch(ev.target.value)}
+            placeholder={activeTab === 'portals' ? 'Search portals...' : 'Search entries...'}
+            className="w-full pl-9 pr-8 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      )}
+
       {activeTab === 'portals' && categories.length > 0 && (
         <div className="flex flex-wrap gap-2">
           <button
@@ -263,7 +292,7 @@ export default function DirectoryPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {visiblePortals.length === 0 && (
-                <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400">No portals added yet.</td></tr>
+                <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400">{portals.length === 0 ? 'No portals added yet.' : 'No portals match your search.'}</td></tr>
               )}
               {visiblePortals.map((p) => (
                 <tr key={p.id} className="hover:bg-gray-50">
@@ -322,10 +351,10 @@ export default function DirectoryPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {entries.length === 0 && (
-                <tr><td colSpan={activeFields.length + 1} className="px-4 py-8 text-center text-gray-400">No entries yet.</td></tr>
+              {visibleEntries.length === 0 && (
+                <tr><td colSpan={activeFields.length + 1} className="px-4 py-8 text-center text-gray-400">{entries.length === 0 ? 'No entries yet.' : 'No entries match your search.'}</td></tr>
               )}
-              {entries.map((e) => (
+              {visibleEntries.map((e) => (
                 <tr key={e.id} className="hover:bg-gray-50">
                   {activeFields.map((f, i) => (
                     <td key={f.id} className={`px-4 py-3 ${i === 0 ? 'font-medium text-gray-800' : 'text-gray-600'}`}>{e.values[String(f.id)] || ''}</td>

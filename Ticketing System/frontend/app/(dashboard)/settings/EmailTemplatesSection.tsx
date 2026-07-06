@@ -31,6 +31,17 @@ function TemplateCard({ template, onSaved }: { template: EmailTemplate; onSaved:
   const bodyRef = useRef<HTMLTextAreaElement>(null)
   const lastFocused = useRef<'subject' | 'body'>('body')
 
+  const handleToggleCustom = (next: boolean) => {
+    // Turning Custom on always starts from real, editable text - the saved
+    // custom version if there is one, otherwise the built-in default (never
+    // a blank box the admin has to rewrite from scratch).
+    if (next) {
+      if (!subject) setSubject(template.default_subject)
+      if (!body) setBody(template.default_body)
+    }
+    setIsCustom(next)
+  }
+
   const insertPlaceholder = (token: string) => {
     const text = `{${token}}`
     if (lastFocused.current === 'subject') {
@@ -72,10 +83,16 @@ function TemplateCard({ template, onSaved }: { template: EmailTemplate; onSaved:
         <CardTitle>{template.label}</CardTitle>
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-500">{isCustom ? 'Custom' : 'Default'}</span>
-          <Toggle value={isCustom} onChange={setIsCustom} />
+          <Toggle value={isCustom} onChange={handleToggleCustom} />
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        {!isCustom && (
+          <p className="text-xs text-gray-400 -mt-1">
+            Showing the built-in default text below. Turn "Custom" on to edit it directly -
+            no need to write a new one from scratch.
+          </p>
+        )}
         <Input
           ref={subjectRef}
           label="Subject"

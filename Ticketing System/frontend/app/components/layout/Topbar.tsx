@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Bell, LogOut, User, ChevronDown, Search, Menu } from 'lucide-react'
+import { Bell, LogOut, User, ChevronDown, Menu } from 'lucide-react'
 import { useAuthStore } from '@/app/lib/store'
 import api from '@/app/lib/api'
 

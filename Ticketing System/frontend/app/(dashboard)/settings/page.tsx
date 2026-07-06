@@ -34,28 +34,6 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
   )
 }
 
-// ─── tiny local Select ───────────────────────────────────────────────────────
-function SSelect({ label, value, onChange, options }: {
-  label: string; value: string
-  onChange: (v: string) => void
-  options: { value: string; label: string }[]
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="block text-sm font-medium text-gray-700">{label}</label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-900"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
-    </div>
-  )
-}
-
 const TABS = [
   { id: 'organisation', label: 'Organisation', icon: Building2 },
   { id: 'portal', label: 'Portal', icon: Layout },
@@ -619,6 +597,7 @@ export default function SettingsPage() {
                       </button>
                     )}
                   </div>
+                  <p className="text-xs text-gray-400 mt-1.5">PNG or ICO — 32×32px or 64×64px, square. Shown as the browser tab icon.</p>
                 </div>
               </div>
             </CardContent>

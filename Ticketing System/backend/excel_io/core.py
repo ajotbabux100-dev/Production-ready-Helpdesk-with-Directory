@@ -4,6 +4,9 @@ its own headers/notes and its own row-by-row create-or-update logic; this
 module only handles the .xlsx plumbing (building a template workbook,
 reading an uploaded workbook back into plain rows).
 """
+import base64
+import io
+
 import openpyxl
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
@@ -76,6 +79,45 @@ def build_workbook(filename, sheets):
     return _as_response(wb, filename)
 
 
+def build_import_report_base64(headers, created_rows, skipped_rows, error_rows):
+    """Builds a full import report with one sheet each for Created, Skipped
+    (Already Exists) and Errors (only the non-empty ones are included) - so
+    "which entries were created vs. skipped" is a reviewable file, not just
+    two numbers in a toast. Imports are create-only: a row matching an
+    existing record is skipped, never used to modify it.
+
+    created_rows/skipped_rows: list of {'row': int, 'data': sequence} dicts.
+    error_rows: list of {'row': int, 'error': str, 'data': sequence} dicts.
+    All 'data' sequences align with `headers`."""
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+
+    if created_rows:
+        ws = wb.create_sheet('Created')
+        _style_header_row(ws, ['Row', *headers])
+        for r in created_rows:
+            ws.append([r['row'], *(r.get('data') or [])])
+
+    if skipped_rows:
+        ws = wb.create_sheet('Skipped (Already Exists)')
+        _style_header_row(ws, ['Row', *headers])
+        for r in skipped_rows:
+            ws.append([r['row'], *(r.get('data') or [])])
+
+    if error_rows:
+        ws = wb.create_sheet('Errors')
+        _style_header_row(ws, ['Row', 'Error', *headers])
+        for err in error_rows:
+            ws.append([err['row'], err['error'], *(err.get('data') or [])])
+
+    if not wb.sheetnames:
+        wb.create_sheet('Report')
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return base64.b64encode(buf.getvalue()).decode('ascii')
+
+
 def read_upload(file_obj):
     """Reads an uploaded .xlsx (the "Data" sheet if present, otherwise the
     first sheet). Returns (headers, rows) where headers is a list of
@@ -87,7 +129,15 @@ def read_upload(file_obj):
     if name and not name.lower().endswith('.xlsx'):
         raise BadUpload('File must be an .xlsx spreadsheet.')
     try:
-        wb = openpyxl.load_workbook(file_obj, data_only=True, read_only=True)
+        # Deliberately NOT read_only=True: in that mode openpyxl trusts the
+        # worksheet's <dimension> XML metadata to know where the data ends,
+        # which can be stale (e.g. after editing/re-saving in Google Sheets,
+        # LibreOffice, or Excel itself) - that silently truncates iter_rows()
+        # to far fewer rows than the file actually has, with no error at all.
+        # Loading fully avoids trusting that metadata. These are admin bulk-
+        # upload files (hundreds to a few thousand rows at most), not a case
+        # where read_only's memory savings matter more than correctness.
+        wb = openpyxl.load_workbook(file_obj, data_only=True, read_only=False)
     except Exception as e:
         raise BadUpload(f'Could not read this file as an Excel spreadsheet: {e}')
     ws = wb[DATA_SHEET_NAME] if DATA_SHEET_NAME in wb.sheetnames else wb.worksheets[0]

@@ -36,12 +36,22 @@ class DepartmentSerializer(serializers.ModelSerializer):
         read_only_fields = ['created_at', 'updated_at']
 
     def get_member_count(self, obj):
+        # DepartmentViewSet's queryset annotates this so listing N departments
+        # doesn't run N extra COUNT queries; fall back to a direct count for
+        # any instance that didn't come through that queryset (e.g. the
+        # response right after creating a new department).
+        annotated = getattr(obj, 'member_count_annotated', None)
+        if annotated is not None:
+            return annotated
         return obj.members.filter(is_active=True).count()
 
     def get_categories(self, obj):
+        # Same reasoning - DepartmentViewSet's queryset Prefetches this
+        # relation already filtered/ordered, so .all() hits that cache
+        # instead of firing a fresh query per department.
         return [
             {'id': c.id, 'name': c.name, 'color': c.color, 'slug': c.slug}
-            for c in obj.categories.filter(is_active=True).order_by('order', 'name')
+            for c in obj.categories.all()
         ]
 
 

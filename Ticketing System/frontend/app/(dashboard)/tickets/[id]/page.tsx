@@ -4,8 +4,8 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuthStore, useHasPerm } from '@/app/lib/store'
 import api from '@/app/lib/api'
-import { downloadFile } from '@/app/lib/download'
-import { Ticket, User, STATUS_COLORS, PRIORITY_COLORS, MentionUser } from '@/app/lib/types'
+import { downloadFile, viewFile, isViewableInBrowser } from '@/app/lib/download'
+import { Ticket, User, Attachment, STATUS_COLORS, PRIORITY_COLORS, MentionUser } from '@/app/lib/types'
 import { Badge } from '@/app/components/ui/badge'
 import { Button } from '@/app/components/ui/button'
 import { Textarea } from '@/app/components/ui/textarea'
@@ -13,8 +13,37 @@ import { formatDate } from '@/app/lib/utils'
 import {
   ArrowLeft, Paperclip, Send, AlertTriangle, Clock, User as UserIcon,
   Building2, MapPin, Tag, Lock, MessageSquare, CheckCircle2, RefreshCw, UserPlus,
-  TrendingUp, ChevronDown, ChevronUp, AtSign, X, Users, LogOut, Printer,
+  TrendingUp, ChevronDown, ChevronUp, AtSign, X, Users, LogOut, Printer, History, Eye, Download,
 } from 'lucide-react'
+
+function AttachmentRow({ att, dense }: { att: Attachment; dense?: boolean }) {
+  const viewable = isViewableInBrowser(att.content_type)
+  return (
+    <div className={`w-full flex items-center gap-2 ${dense ? 'py-1.5 px-2.5' : 'p-3'} rounded-xl border border-gray-100 hover:border-blue-200 hover:bg-blue-50 transition-colors group`}>
+      <Paperclip className={`${dense ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-gray-400 group-hover:text-blue-600 flex-shrink-0`} />
+      <span className={`${dense ? 'text-xs' : 'text-sm'} text-gray-700 group-hover:text-blue-700 flex-1 truncate text-left`}>{att.filename}</span>
+      <span className="text-xs text-gray-400 flex-shrink-0">{(att.file_size / 1024).toFixed(1)} KB</span>
+      {viewable && (
+        <button
+          type="button"
+          title="View in browser"
+          onClick={() => viewFile(att.download_url, att.content_type)}
+          className="flex-shrink-0 p-1 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-100"
+        >
+          <Eye className={dense ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
+        </button>
+      )}
+      <button
+        type="button"
+        title="Download"
+        onClick={() => downloadFile(att.download_url, att.filename)}
+        className="flex-shrink-0 p-1 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-100"
+      >
+        <Download className={dense ? 'w-3.5 h-3.5' : 'w-4 h-4'} />
+      </button>
+    </div>
+  )
+}
 
 const STATUS_OPTIONS = [
   { value: 'new', label: 'New' },
@@ -105,6 +134,7 @@ export default function TicketDetailPage() {
   const [commentLoading, setCommentLoading] = useState(false)
   const [commentError, setCommentError] = useState('')
   const [statusFiles, setStatusFiles] = useState<File[]>([])
+  const [statusNote, setStatusNote] = useState('')
   const [agents, setAgents] = useState<User[]>([])
   const [selectedAgent, setSelectedAgent] = useState('')
   const [selectedStatus, setSelectedStatus] = useState('')
@@ -237,11 +267,16 @@ export default function TicketDetailPage() {
     } finally { setCommentLoading(false) }
   }
 
+  const isResolveOrClose = (status: string) => status === 'resolved' || status === 'closed'
+
   const applyStatus = async (status: string) => {
     setActionLoading(true)
     setStatusError('')
     try {
-      await api.patch(`/tickets/${id}/update_status/`, { status })
+      await api.patch(`/tickets/${id}/update_status/`, {
+        status,
+        ...(isResolveOrClose(status) ? { resolution_note: statusNote } : {}),
+      })
       for (const file of statusFiles) {
         const fd = new FormData()
         fd.append('file', file)
@@ -250,6 +285,7 @@ export default function TicketDetailPage() {
         })
       }
       setStatusFiles([])
+      setStatusNote('')
       fetchTicket()
     } catch (err: any) {
       setStatusError(err.response?.data?.error || 'Failed to update status.')
@@ -258,6 +294,7 @@ export default function TicketDetailPage() {
 
   const updateStatus = () => {
     if (!selectedStatus || selectedStatus === ticket?.status) return
+    if (isResolveOrClose(selectedStatus) && !statusNote.trim()) return
     applyStatus(selectedStatus)
   }
 
@@ -347,7 +384,8 @@ export default function TicketDetailPage() {
   const hasMentionResults = filteredDeptUsers.length > 0 || filteredOtherUsers.length > 0
 
   return (
-    <div className="space-y-4">
+    <>
+    <div className="space-y-4 print:hidden">
       {/* Top bar */}
       <div className="flex items-start gap-3">
         <Link href="/tickets" className="print:hidden">
@@ -383,7 +421,7 @@ export default function TicketDetailPage() {
         {/* ── Left: description + activity ── */}
         <div className="lg:col-span-2 space-y-4">
           {/* Description */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 print:break-inside-avoid">
             <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Description</h2>
             <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{ticket.description}</p>
 
@@ -394,31 +432,62 @@ export default function TicketDetailPage() {
             )}
           </div>
 
+          {/* Resolution / Cancellation note */}
+          {ticket.resolution_note && (ticket.status === 'resolved' || ticket.status === 'closed') && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 print:break-inside-avoid">
+              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                {ticket.status === 'resolved' ? 'Resolution Note' : 'Cancellation Note'}
+              </h2>
+              <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{ticket.resolution_note}</p>
+            </div>
+          )}
+
           {/* Attachments */}
           {ticket.attachments.length > 0 && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 print:break-inside-avoid">
               <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
                 Attachments ({ticket.attachments.length})
               </h2>
               <div className="space-y-2">
                 {ticket.attachments.map((att) => (
-                  <button
-                    key={att.id}
-                    type="button"
-                    onClick={() => downloadFile(att.download_url, att.filename)}
-                    className="w-full flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:border-blue-200 hover:bg-blue-50 transition-colors group text-left"
-                  >
-                    <Paperclip className="w-4 h-4 text-gray-400 group-hover:text-blue-600" />
-                    <span className="text-sm text-gray-700 group-hover:text-blue-700 flex-1 truncate">{att.filename}</span>
-                    <span className="text-xs text-gray-400">{(att.file_size / 1024).toFixed(1)} KB</span>
-                  </button>
+                  <AttachmentRow key={att.id} att={att} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Status Journey - full chronological trail for the printed report:
+              creation, (re)assignment and every status transition, sourced
+              from the audit log so it doesn't drift from what actually
+              happened. */}
+          {ticket.status_history.length > 0 && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 print:break-inside-avoid">
+              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-5 flex items-center gap-2">
+                <History className="w-4 h-4" /> Status Journey
+              </h2>
+              <div className="space-y-4">
+                {ticket.status_history.map((h, i) => (
+                  <div key={i} className="flex gap-3">
+                    <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <History className="w-3.5 h-3.5 text-blue-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-700">
+                        {h.description}
+                        {h.old_value && h.new_value && (
+                          <span className="text-gray-400"> ({h.old_value_display} → {h.new_value_display})</span>
+                        )}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">{h.user_name} • {formatDate(h.timestamp)}</p>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
           )}
 
           {/* Activity timeline */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 print:break-inside-avoid">
             <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-5">
               Activity{visibleComments.length > 0 ? ` (${visibleComments.length})` : ''}
             </h2>
@@ -475,16 +544,7 @@ export default function TicketDetailPage() {
                       {c.attachments.length > 0 && (
                         <div className="mt-2 space-y-1.5">
                           {c.attachments.map((att) => (
-                            <button
-                              key={att.id}
-                              type="button"
-                              onClick={() => downloadFile(att.download_url, att.filename)}
-                              className="w-full flex items-center gap-2 py-1.5 px-2.5 rounded-lg border border-gray-100 hover:border-blue-200 hover:bg-blue-50 transition-colors group text-left"
-                            >
-                              <Paperclip className="w-3.5 h-3.5 text-gray-400 group-hover:text-blue-600 flex-shrink-0" />
-                              <span className="text-xs text-gray-600 group-hover:text-blue-700 flex-1 truncate">{att.filename}</span>
-                              <span className="text-xs text-gray-400">{(att.file_size / 1024).toFixed(1)} KB</span>
-                            </button>
+                            <AttachmentRow key={att.id} att={att} dense />
                           ))}
                         </div>
                       )}
@@ -706,7 +766,7 @@ export default function TicketDetailPage() {
           {ticket.sla_resolution_due && <SLAStatus ticket={ticket} />}
 
           {/* Details card */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4 print:break-inside-avoid">
             <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Details</h2>
 
             <div className="space-y-3">
@@ -864,6 +924,20 @@ export default function TicketDetailPage() {
                             <option key={o.value} value={o.value}>{o.label}</option>
                           ))}
                         </select>
+                        {isResolveOrClose(selectedStatus) && (
+                          <div className="space-y-1">
+                            <Textarea
+                              label={`${selectedStatus === 'resolved' ? 'Resolution' : 'Cancellation'} Note *`}
+                              placeholder={selectedStatus === 'resolved'
+                                ? 'Explain how this ticket was resolved...'
+                                : 'Explain why this ticket is being closed/cancelled...'}
+                              rows={3}
+                              value={statusNote}
+                              onChange={(e) => setStatusNote(e.target.value)}
+                            />
+                            <p className="text-xs text-gray-400">Required to {selectedStatus === 'resolved' ? 'resolve' : 'close'} this ticket.</p>
+                          </div>
+                        )}
                         <label className="flex items-center gap-2 cursor-pointer w-fit">
                           <input
                             type="file"
@@ -903,7 +977,7 @@ export default function TicketDetailPage() {
                           onClick={updateStatus}
                           className="w-full"
                           loading={actionLoading}
-                          disabled={selectedStatus === ticket.status}
+                          disabled={selectedStatus === ticket.status || (isResolveOrClose(selectedStatus) && !statusNote.trim())}
                         >
                           <CheckCircle2 className="w-4 h-4 mr-1.5" /> Apply Status
                         </Button>
@@ -916,27 +990,37 @@ export default function TicketDetailPage() {
                     <label className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
                       <UserIcon className="w-3.5 h-3.5" /> Reassign To
                     </label>
-                    <select
-                      value={selectedAgent}
-                      onChange={(e) => setSelectedAgent(e.target.value)}
-                      className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900"
-                    >
-                      <option value="">Select agent...</option>
-                      {agents.map((a) => (
-                        <option key={a.id} value={a.id}>
-                          {a.full_name}{a.id === ticket.assigned_to ? ' (current)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <Button
-                      onClick={assignAgent}
-                      variant="outline"
-                      className="w-full"
-                      loading={actionLoading}
-                      disabled={!selectedAgent}
-                    >
-                      Reassign Ticket
-                    </Button>
+                    {isTicketLocked ? (
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+                        <p className="text-xs text-gray-500">
+                          This ticket is {ticket.status}. Use the &quot;Reopen Ticket&quot; action below before reassigning.
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <select
+                          value={selectedAgent}
+                          onChange={(e) => setSelectedAgent(e.target.value)}
+                          className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-900/20 focus:border-blue-900"
+                        >
+                          <option value="">Select agent...</option>
+                          {agents.map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.full_name}{a.id === ticket.assigned_to ? ' (current)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <Button
+                          onClick={assignAgent}
+                          variant="outline"
+                          className="w-full"
+                          loading={actionLoading}
+                          disabled={!selectedAgent}
+                        >
+                          Reassign Ticket
+                        </Button>
+                      </>
+                    )}
                   </div>
 
                   {/* Escalate to Manager — agents only, ticket not already escalated */}
@@ -1052,5 +1136,114 @@ export default function TicketDetailPage() {
         </div>
       </div>
     </div>
+
+    {/* Plain data report - shown only when printing. Deliberately not a
+        shrunk-down copy of the on-screen UI (no cards/badges/colors/icons) -
+        just a flat document: ticket fields, description, status journey and
+        chat history as simple tables/lists. */}
+    <div className="hidden print:block text-black text-[13px] leading-normal">
+      <div className="text-center mb-4 pb-3 border-b-2 border-black">
+        <h1 className="text-lg font-bold">Ticket Report</h1>
+        <p className="text-xs">Generated {formatDate(new Date().toISOString())}</p>
+      </div>
+
+      <table className="w-full border-collapse mb-4">
+        <tbody>
+          {([
+            ['Ticket Number', ticket.ticket_number],
+            ['Title', ticket.title],
+            ['Category', ticket.category_display],
+            ['Priority', ticket.priority_display],
+            ['Status', ticket.status_display],
+            ['Department', ticket.department_detail?.name || '—'],
+            ['Requester', ticket.requester_detail?.full_name || '—'],
+            ['Assigned To', ticket.assigned_to_detail?.full_name || 'Unassigned'],
+            ['Location', ticket.location || '—'],
+            ['Created', formatDate(ticket.created_at)],
+            ...(ticket.resolved_at ? [['Resolved At', formatDate(ticket.resolved_at)]] : []),
+            ...(ticket.closed_at ? [['Closed At', formatDate(ticket.closed_at)]] : []),
+            ...(ticket.sla_response_due ? [['Response Due', formatDate(ticket.sla_response_due)]] : []),
+            ...(ticket.sla_resolution_due ? [['Resolution Due', formatDate(ticket.sla_resolution_due)]] : []),
+          ] as [string, string][]).map(([label, value]) => (
+            <tr key={label} className="border-b border-gray-300">
+              <td className="py-1 pr-4 font-semibold align-top w-40">{label}</td>
+              <td className="py-1">{value}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="mb-4">
+        <h2 className="text-sm font-bold border-b border-black mb-1">Description</h2>
+        <p className="whitespace-pre-wrap">{ticket.description}</p>
+      </div>
+
+      {ticket.resolution_note && (
+        <div className="mb-4">
+          <h2 className="text-sm font-bold border-b border-black mb-1">
+            {ticket.status === 'resolved' ? 'Resolution Note' : 'Cancellation Note'}
+          </h2>
+          <p className="whitespace-pre-wrap">{ticket.resolution_note}</p>
+        </div>
+      )}
+
+      {ticket.attachments.length > 0 && (
+        <div className="mb-4">
+          <h2 className="text-sm font-bold border-b border-black mb-1">Attachments</h2>
+          <ul className="list-disc pl-5">
+            {ticket.attachments.map((a) => <li key={a.id}>{a.filename}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {ticket.status_history.length > 0 && (
+        <div className="mb-4">
+          <h2 className="text-sm font-bold border-b border-black mb-1">Status Journey</h2>
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="border-b border-black text-left">
+                <th className="py-1 pr-2">Date/Time</th>
+                <th className="py-1 pr-2">Event</th>
+                <th className="py-1 pr-2">Change</th>
+                <th className="py-1">By</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ticket.status_history.map((h, i) => (
+                <tr key={i} className="border-b border-gray-300">
+                  <td className="py-1 pr-2 align-top whitespace-nowrap">{formatDate(h.timestamp)}</td>
+                  <td className="py-1 pr-2 align-top">{h.description}</td>
+                  <td className="py-1 pr-2 align-top whitespace-nowrap">
+                    {h.old_value && h.new_value ? `${h.old_value_display} -> ${h.new_value_display}` : '—'}
+                  </td>
+                  <td className="py-1 align-top">{h.user_name}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {visibleComments.length > 0 && (
+        <div>
+          <h2 className="text-sm font-bold border-b border-black mb-1">Chat / Comments</h2>
+          {visibleComments.map((c) => (
+            <div key={c.id} className="mb-2 pb-2 border-b border-gray-200">
+              <p className="font-semibold">
+                {c.author_detail.full_name}{' '}
+                <span className="font-normal text-gray-600">
+                  — {formatDate(c.created_at)}{c.is_internal ? ' (Internal)' : ''}
+                </span>
+              </p>
+              <p className="whitespace-pre-wrap">{c.body}</p>
+              {c.attachments.length > 0 && (
+                <p className="text-xs text-gray-600">Attachments: {c.attachments.map((a) => a.filename).join(', ')}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+    </>
   )
 }

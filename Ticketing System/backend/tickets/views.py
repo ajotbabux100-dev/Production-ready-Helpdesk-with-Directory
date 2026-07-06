@@ -119,6 +119,11 @@ class TicketViewSet(viewsets.ModelViewSet):
                 {'error': 'This ticket is escalated. Only someone who can manage escalated tickets can reassign it.'},
                 status=403,
             )
+        if ticket.status in (Ticket.RESOLVED, Ticket.CLOSED):
+            return Response(
+                {'error': 'This ticket is resolved/closed. Reopen it before reassigning.'},
+                status=400,
+            )
         assigned_to_id = request.data.get('assigned_to')
         department_id = request.data.get('department')
 
@@ -233,7 +238,10 @@ class TicketViewSet(viewsets.ModelViewSet):
         ticket.assigned_to = None if old_status == Ticket.ASSIGNED else ticket.assigned_to
         ticket.resolved_at = None
         ticket.closed_at = None
-        ticket.save(update_fields=['status', 'assigned_to', 'resolved_at', 'closed_at'])
+        # Clear the note too - resolving/closing it again (a fresh attempt)
+        # requires a fresh mandatory note, not the stale one from last time.
+        ticket.resolution_note = ''
+        ticket.save(update_fields=['status', 'assigned_to', 'resolved_at', 'closed_at', 'resolution_note'])
 
         log_action(request.user, AuditLog.STATUS_CHANGED,
                    description=f'Ticket {ticket.ticket_number} reopened',
@@ -259,6 +267,18 @@ class TicketViewSet(viewsets.ModelViewSet):
                 {'error': 'This ticket is resolved/closed. Reopen it before changing the status further.'},
                 status=400,
             )
+
+        # Resolving or closing a ticket must always be explained - a mandatory
+        # note (reused as the "why" whether it was actually fixed or just
+        # cancelled/withdrawn), not an optional afterthought.
+        if new_status in (Ticket.RESOLVED, Ticket.CLOSED):
+            note = (request.data.get('resolution_note') or '').strip()
+            if not note:
+                return Response(
+                    {'error': 'A resolution/cancellation note is required to resolve or close a ticket.'},
+                    status=400,
+                )
+            ticket.resolution_note = note
 
         old_status = ticket.status
         ticket.status = new_status

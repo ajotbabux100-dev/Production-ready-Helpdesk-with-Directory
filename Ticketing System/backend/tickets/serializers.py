@@ -122,6 +122,7 @@ class TicketDetailSerializer(serializers.ModelSerializer):
     comments = serializers.SerializerMethodField()
     attachments = AttachmentSerializer(many=True, read_only=True)
     participants = TicketParticipantSerializer(many=True, read_only=True)
+    status_history = serializers.SerializerMethodField()
     is_sla_response_breached = serializers.ReadOnlyField()
     is_sla_resolution_breached = serializers.ReadOnlyField()
 
@@ -130,6 +131,36 @@ class TicketDetailSerializer(serializers.ModelSerializer):
             return ''
         cat = TicketCategory.objects.filter(slug=obj.category).first()
         return cat.name if cat else obj.category.replace('_', ' ').title()
+
+    def get_status_history(self, obj):
+        # The "journey" a ticket took - who created/assigned/reassigned it and
+        # every status transition, oldest first, sourced from the same audit
+        # log already used elsewhere rather than a separate tracking table.
+        # Deliberately excludes comment/attachment events - those already
+        # appear in the Activity/chat section, so including them here would
+        # just duplicate the same events in two places on the print report.
+        from audit.models import AuditLog
+        RELEVANT_ACTIONS = (
+            AuditLog.TICKET_CREATED, AuditLog.TICKET_ASSIGNED, AuditLog.TICKET_REASSIGNED,
+            AuditLog.STATUS_CHANGED, AuditLog.TICKET_RESOLVED, AuditLog.TICKET_CLOSED,
+            AuditLog.TICKET_REOPENED,
+        )
+        status_labels = dict(Ticket.STATUS_CHOICES)
+        logs = obj.audit_logs.filter(action__in=RELEVANT_ACTIONS).select_related('user').order_by('timestamp')
+        return [
+            {
+                'action': log.action,
+                'action_display': log.get_action_display(),
+                'description': log.description,
+                'old_value': log.old_value,
+                'old_value_display': status_labels.get(log.old_value, log.old_value),
+                'new_value': log.new_value,
+                'new_value_display': status_labels.get(log.new_value, log.new_value),
+                'user_name': log.user.full_name if log.user else 'System',
+                'timestamp': log.timestamp,
+            }
+            for log in logs
+        ]
 
     def get_comments(self, obj):
         # Internal notes (and their attachments) are staff-only - filtering
@@ -154,12 +185,12 @@ class TicketDetailSerializer(serializers.ModelSerializer):
             'department', 'department_detail',
             'assigned_to', 'assigned_to_detail',
             'sla_response_due', 'sla_resolution_due',
-            'first_response_at', 'resolved_at', 'closed_at',
+            'first_response_at', 'resolved_at', 'closed_at', 'resolution_note',
             'is_sla_response_breached', 'is_sla_resolution_breached',
-            'comments', 'attachments', 'participants',
+            'comments', 'attachments', 'participants', 'status_history',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['ticket_number', 'requester', 'created_at', 'updated_at']
+        read_only_fields = ['ticket_number', 'requester', 'created_at', 'updated_at', 'resolution_note']
 
 
 class TicketCreateSerializer(serializers.ModelSerializer):

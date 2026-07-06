@@ -19,7 +19,8 @@ EMAIL_TEMPLATE_DEFAULTS = {
             'Priority: {priority}\n'
             'Status: {status}\n'
             'Department: {department}\n'
-            'Location: {location}\n\n'
+            'Location: {location}\n'
+            'Expected Resolution: {resolution_due}\n\n'
             'Description:\n{description}\n\n'
             'If you need to add more information or attachments, please log in to the portal and update your ticket.'
         ),
@@ -34,7 +35,8 @@ EMAIL_TEMPLATE_DEFAULTS = {
             'Category: {category}\n'
             'Priority: {priority}\n'
             'Submitted By: {requester_name}\n'
-            'Location: {location}\n\n'
+            'Location: {location}\n'
+            'Response Due: {response_due}\n\n'
             'Description:\n{description}'
         ),
     },
@@ -45,7 +47,9 @@ EMAIL_TEMPLATE_DEFAULTS = {
             '"{title}" has been assigned to you.\n\n'
             'Ticket Number: {ticket_number}\n'
             'Priority: {priority}\n'
-            'Requester: {requester_name}\n\n'
+            'Requester: {requester_name}\n'
+            'Response Due: {response_due}\n'
+            'Resolution Due: {resolution_due}\n\n'
             'Description:\n{description}'
         ),
     },
@@ -54,7 +58,8 @@ EMAIL_TEMPLATE_DEFAULTS = {
         'subject': '[{ticket_number}] Status updated to {status}',
         'body': (
             'Your ticket "{title}" status has changed to {status}.\n\n'
-            'Ticket Number: {ticket_number}'
+            'Ticket Number: {ticket_number}\n'
+            'Handled By: {assigned_to_name}'
         ),
     },
     'comment_added': {
@@ -62,7 +67,8 @@ EMAIL_TEMPLATE_DEFAULTS = {
         'subject': '[{ticket_number}] New update on your ticket',
         'body': (
             'A new reply has been posted on your ticket "{title}".\n\n'
-            'Ticket Number: {ticket_number}'
+            'Ticket Number: {ticket_number}\n'
+            'Status: {status}'
         ),
     },
     'ticket_resolved': {
@@ -70,7 +76,9 @@ EMAIL_TEMPLATE_DEFAULTS = {
         'subject': '[{ticket_number}] Your ticket has been resolved',
         'body': (
             'Your ticket "{title}" has been resolved.\n\n'
-            'Ticket Number: {ticket_number}'
+            'Ticket Number: {ticket_number}\n'
+            'Resolved By: {assigned_to_name}\n'
+            'Resolved At: {resolved_at}'
         ),
     },
     'ticket_escalated': {
@@ -80,7 +88,9 @@ EMAIL_TEMPLATE_DEFAULTS = {
             '"{title}" was escalated to you by {escalated_by}.\n'
             'Reason: {escalation_reason}\n\n'
             'Ticket Number: {ticket_number}\n'
-            'Priority: {priority}'
+            'Priority: {priority}\n'
+            'Requester: {requester_name}\n'
+            'Resolution Due: {resolution_due}'
         ),
     },
     'sla_breach': {
@@ -89,20 +99,30 @@ EMAIL_TEMPLATE_DEFAULTS = {
         'body': (
             'SLA resolution deadline has been breached for ticket "{title}".\n\n'
             'Ticket Number: {ticket_number}\n'
-            'Priority: {priority}'
+            'Priority: {priority}\n'
+            'Status: {status}\n'
+            'Department: {department}\n'
+            'Assigned To: {assigned_to_name}\n'
+            'Created: {created_at}\n'
+            'Resolution Due: {resolution_due}'
         ),
     },
 }
 
 # Placeholders available to every template, documented for the Settings UI.
+# response_due/resolution_due/resolved_at render as '' when not
+# applicable/set - admins opt into showing them by inserting the tag into
+# their custom text, rather than it being forced by default.
 EMAIL_TEMPLATE_PLACEHOLDERS = [
     'ticket_number', 'title', 'description', 'category', 'priority', 'status',
     'department', 'location', 'requester_name', 'requester_email',
-    'assigned_to_name', 'portal_name', 'ticket_url',
+    'assigned_to_name', 'portal_name', 'ticket_url', 'created_at',
+    'response_due', 'resolution_due',
 ]
 # Extra placeholders only populated for specific notification types.
 EMAIL_TEMPLATE_EXTRA_PLACEHOLDERS = {
     'ticket_escalated': ['escalated_by', 'escalation_reason'],
+    'ticket_resolved': ['resolved_at'],
 }
 
 

@@ -15,11 +15,6 @@ const PRIORITY_COLORS: Record<string, string> = { critical: '#ef4444', high: '#f
 
 type AgentSortKey = 'name' | 'total' | 'resolved' | 'rate'
 
-function currentMonth() {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-}
-
 export default function ReportsPage() {
   const [month, setMonth] = useState('')
   const [byStatus, setByStatus] = useState<any[]>([])

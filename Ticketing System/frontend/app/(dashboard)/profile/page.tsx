@@ -26,6 +26,7 @@ export default function ProfilePage() {
   const [pwSaving, setPwSaving] = useState(false)
   const [pwSaved, setPwSaved] = useState(false)
   const [pwErrors, setPwErrors] = useState<Record<string, string>>({})
+  const [avatarLoading, setAvatarLoading] = useState(false)
 
   if (!user) return null
 
@@ -47,8 +48,6 @@ export default function ProfilePage() {
       setSaving(false)
     }
   }
-
-  const [avatarLoading, setAvatarLoading] = useState(false)
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]

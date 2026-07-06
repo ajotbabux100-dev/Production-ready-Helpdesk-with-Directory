@@ -1,3 +1,4 @@
+from django.db.models import Count, Prefetch, Q
 from rest_framework import viewsets
 from rest_framework.filters import SearchFilter
 from django_filters.rest_framework import DjangoFilterBackend
@@ -5,13 +6,31 @@ from django_filters.rest_framework import DjangoFilterBackend
 from .models import Department, SLAPolicy
 from .serializers import DepartmentSerializer, DepartmentMinimalSerializer, SLAPolicySerializer
 from users.permissions import require_perm
+from tickets.models import TicketCategory
 
 
 class DepartmentViewSet(viewsets.ModelViewSet):
-    queryset = Department.objects.prefetch_related('sla_policies').select_related('manager', 'auto_assign_to').filter(is_deleted=False)
+    # member_count/categories are annotated/prefetched here so the serializer
+    # doesn't fire a fresh query per department row for every department in
+    # the list (was a classic N+1 - harmless with a handful of departments,
+    # but scales badly).
+    queryset = (
+        Department.objects
+        .prefetch_related(
+            'sla_policies',
+            Prefetch('categories', queryset=TicketCategory.objects.filter(is_active=True).order_by('order', 'name')),
+        )
+        .select_related('manager', 'auto_assign_to')
+        .annotate(member_count_annotated=Count('members', filter=Q(members__is_active=True), distinct=True))
+        .filter(is_deleted=False)
+    )
     filter_backends = [DjangoFilterBackend, SearchFilter]
     filterset_fields = ['is_active']
     search_fields = ['name']
+    # Frontend renders one flat table with no page-through controls, so it
+    # needs every department in one response rather than being silently
+    # capped at 20.
+    pagination_class = None
 
     def get_serializer_class(self):
         if self.action == 'list' and not self.request.user.is_admin:

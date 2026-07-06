@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAuthStore, useHasPerm } from '@/app/lib/store'
 import api from '@/app/lib/api'
-import { DashboardSummary, Ticket, STATUS_COLORS, PRIORITY_COLORS } from '@/app/lib/types'
+import { DashboardSummary, Ticket, STATUS_COLORS } from '@/app/lib/types'
 import { Badge } from '@/app/components/ui/badge'
 import { Button } from '@/app/components/ui/button'
 import { formatDate } from '@/app/lib/utils'
@@ -12,7 +12,7 @@ import {
   Plus, ClipboardCheck, TrendingUp, AlertTriangle, ArrowRight,
   Circle, Inbox, Activity,
 } from 'lucide-react'
-import { RadialBarChart, RadialBar, Cell, ResponsiveContainer, Tooltip, PieChart, Pie } from 'recharts'
+import { Cell, ResponsiveContainer, PieChart, Pie } from 'recharts'
 import { motion, Variants } from 'framer-motion'
 
 const fadeUp: Variants = {

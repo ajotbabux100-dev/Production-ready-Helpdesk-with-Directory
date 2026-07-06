@@ -13,6 +13,17 @@ from users.permissions import require_perm
 from excel_io import build_workbook
 
 
+def _sla_breached_count(qs):
+    """DB-side count of tickets whose SLA resolution deadline has passed and
+    aren't yet resolved/closed - mirrors Ticket.is_sla_resolution_breached
+    without materializing every row into Python just to evaluate a property
+    per ticket (matters once a department has thousands of tickets)."""
+    return qs.filter(
+        sla_resolution_due__isnull=False,
+        sla_resolution_due__lt=timezone.now(),
+    ).exclude(status__in=[Ticket.RESOLVED, Ticket.CLOSED]).count()
+
+
 def _dept_scoped(qs, request):
     """Shared department-scoping rule used by every report (including the
     export, which returns row-level ticket detail, not just aggregates).
@@ -79,7 +90,7 @@ class DashboardSummaryView(APIView):
             'pending': base_qs.filter(status__in=['pending_user', 'pending_vendor']).count(),
             'resolved': base_qs.filter(status='resolved').count(),
             'closed': base_qs.filter(status='closed').count(),
-            'sla_breached': sum(1 for t in base_qs.select_related() if t.is_sla_resolution_breached),
+            'sla_breached': _sla_breached_count(base_qs),
         }
 
         if user.is_admin or user.has_perm_key('tickets', 'claim'):
@@ -169,7 +180,7 @@ class SLAComplianceView(APIView):
     def get(self, request):
         qs = _scoped(Ticket.objects.filter(sla_resolution_due__isnull=False), request)
         total = qs.count()
-        breached = sum(1 for t in qs if t.is_sla_resolution_breached)
+        breached = _sla_breached_count(qs)
         compliant = total - breached
         rate = round((compliant / total * 100), 1) if total else 0
 
@@ -239,7 +250,7 @@ class ReportsExportView(APIView):
 
         sla_qs = _scoped(Ticket.objects.filter(sla_resolution_due__isnull=False), request)
         sla_total = sla_qs.count()
-        sla_breached = sum(1 for t in sla_qs if t.is_sla_resolution_breached)
+        sla_breached = _sla_breached_count(sla_qs)
         sla_compliant = sla_total - sla_breached
         sla_rate = round((sla_compliant / sla_total * 100), 1) if sla_total else 0
 

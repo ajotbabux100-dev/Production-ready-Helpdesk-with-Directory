@@ -17,10 +17,24 @@ class _SafeDict(dict):
         return ''
 
 
+def _fmt_datetime(dt):
+    # Django's date formatting (not raw strftime) since '%-d'/'%-I' aren't
+    # portable across platforms (Windows lacks them entirely). localtime()
+    # first to match the auto-localization the `|date:` template filter does
+    # for the same field elsewhere (e.g. ticket_assigned.html).
+    if not dt:
+        return ''
+    from django.utils import timezone
+    from django.utils.dateformat import format as django_date_format
+    return django_date_format(timezone.localtime(dt), 'N j, Y g:i A')
+
+
 def _placeholder_context(ticket):
     """Common {placeholder} values available to every customizable email -
-    see EMAIL_TEMPLATE_PLACEHOLDERS in models.py, which documents this same
-    list for the Settings UI."""
+    see EMAIL_TEMPLATE_PLACEHOLDERS/EMAIL_TEMPLATE_EXTRA_PLACEHOLDERS in
+    models.py, which document this same list for the Settings UI. Date
+    fields are '' when not set/applicable - an admin only sees them in an
+    email if they chose to insert the tag into their own custom text."""
     return {
         'ticket_number': ticket.ticket_number,
         'title': ticket.title,
@@ -35,6 +49,10 @@ def _placeholder_context(ticket):
         'assigned_to_name': ticket.assigned_to.full_name if ticket.assigned_to else 'Unassigned',
         'portal_name': _portal_name(),
         'ticket_url': f'{_frontend_url()}/tickets/{ticket.id}',
+        'response_due': _fmt_datetime(ticket.sla_response_due),
+        'resolution_due': _fmt_datetime(ticket.sla_resolution_due),
+        'created_at': _fmt_datetime(ticket.created_at),
+        'resolved_at': _fmt_datetime(ticket.resolved_at),
     }
 
 

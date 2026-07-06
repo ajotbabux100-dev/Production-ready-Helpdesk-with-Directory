@@ -198,14 +198,28 @@ export interface Ticket {
   first_response_at: string | null
   resolved_at: string | null
   closed_at: string | null
+  resolution_note: string
   is_sla_response_breached: boolean
   is_sla_resolution_breached: boolean
   location: string
   comments: Comment[]
   attachments: Attachment[]
   participants: TicketParticipant[]
+  status_history: StatusHistoryEntry[]
   created_at: string
   updated_at: string
+}
+
+export interface StatusHistoryEntry {
+  action: string
+  action_display: string
+  description: string
+  old_value: string
+  old_value_display: string
+  new_value: string
+  new_value_display: string
+  user_name: string
+  timestamp: string
 }
 
 export interface Comment {

@@ -24,7 +24,7 @@ from .rbac import permission_catalog
 from audit.utils import log_action
 from audit.models import AuditLog
 from departments.models import Department
-from excel_io import build_template, read_upload, BadUpload
+from excel_io import build_template, read_upload, build_import_report_base64, BadUpload
 from excel_io.core import row_cell
 from notifications.email import send_ticket_email
 
@@ -190,6 +190,9 @@ class UserViewSet(viewsets.ModelViewSet):
     filterset_fields = ['role', 'department', 'is_active']
     search_fields = ['email', 'first_name', 'last_name']
     ordering_fields = ['first_name', 'date_joined']
+    # Users page renders one flat table with no page-through controls, so it
+    # needs everyone in one response rather than being silently capped at 20.
+    pagination_class = None
 
     def get_permissions(self):
         if self.action in ['list', 'template']:
@@ -368,15 +371,14 @@ class UserViewSet(viewsets.ModelViewSet):
         notes = [
             'Master upload template for Users.',
             'Fill in one row per user below the header row.',
-            'Email is the matching key: uploading a row with an email that already belongs to a user updates '
-            'that user instead of creating a new one.',
+            'Email is the matching key: uploading a row with an email that already belongs to a user skips '
+            'that row - this import only creates new users, it never modifies existing ones.',
             f'Role must exactly match an existing role name: {role_names}',
             f'Department must exactly match an existing department name: {dept_names}',
-            'Password is optional. Leave blank to keep the current password when updating, or to create the '
-            'account without a usable password (they can use "Forgot password") when adding new.',
+            'Password is optional. Leave blank to create the account without a usable password (they can use '
+            '"Forgot password" to set one).',
             'Active must be YES or NO. Leave blank to default to YES.',
-            'Role and Department are required when adding a new user, but can be left blank when updating an '
-            'existing one (the current value is kept).',
+            'Role and Department are required for every new user.',
         ]
         return build_template('users_template.xlsx', headers, notes=notes)
 
@@ -400,8 +402,20 @@ class UserViewSet(viewsets.ModelViewSet):
         roles_by_name = {r.name.lower(): r for r in Role.objects.all()}
         depts_by_name = {d.name.lower(): d for d in Department.objects.all()}
 
-        created = updated = 0
-        errors = []
+        # Redact the Password column before it can ever end up in the
+        # downloadable error report - that report may get saved/shared, and
+        # a bulk-upload sheet's Password column is plaintext.
+        pw_idx = headers.index('Password') if 'Password' in headers else None
+
+        def _redacted(row):
+            if pw_idx is None or not row[pw_idx]:
+                return row
+            row = list(row)
+            row[pw_idx] = '••••••••'
+            return row
+
+        created = skipped = 0
+        created_rows, skipped_rows, errors = [], [], []
         for i, row in enumerate(rows, start=2):
             email = row_cell(headers, row, 'Email')
             first_name = row_cell(headers, row, 'First Name')
@@ -409,18 +423,31 @@ class UserViewSet(viewsets.ModelViewSet):
             if not email and not first_name and not last_name:
                 continue
             if not email or not first_name or not last_name:
-                errors.append({'row': i, 'error': 'First Name, Last Name and Email are all required.'})
+                errors.append({'row': i, 'error': 'First Name, Last Name and Email are all required.', 'data': _redacted(row)})
+                continue
+
+            # Create-only import: a row matching an existing user (by email)
+            # is skipped, never used to modify that user.
+            if User.objects.filter(email__iexact=email).exists():
+                skipped += 1
+                skipped_rows.append({'row': i, 'data': _redacted(row)})
                 continue
 
             role_name = row_cell(headers, row, 'Role')
             dept_name = row_cell(headers, row, 'Department')
             role = roles_by_name.get(role_name.lower()) if role_name else None
             if role_name and not role:
-                errors.append({'row': i, 'error': f'Unknown role "{role_name}".'})
+                errors.append({'row': i, 'error': f'Unknown role "{role_name}".', 'data': _redacted(row)})
                 continue
             department = depts_by_name.get(dept_name.lower()) if dept_name else None
             if dept_name and not department:
-                errors.append({'row': i, 'error': f'Unknown department "{dept_name}".'})
+                errors.append({'row': i, 'error': f'Unknown department "{dept_name}".', 'data': _redacted(row)})
+                continue
+            if not role:
+                errors.append({'row': i, 'error': 'Role is required for new users.', 'data': _redacted(row)})
+                continue
+            if not department:
+                errors.append({'row': i, 'error': 'Department is required for new users.', 'data': _redacted(row)})
                 continue
 
             active_raw = row_cell(headers, row, 'Active').lower()
@@ -431,49 +458,34 @@ class UserViewSet(viewsets.ModelViewSet):
                 if password:
                     validate_password(password)
 
-                existing = User.objects.filter(email__iexact=email).first()
-                if existing:
-                    existing.first_name = first_name
-                    existing.last_name = last_name
-                    existing.phone = row_cell(headers, row, 'Phone')
-                    if role:
-                        existing.role = role
-                    if department:
-                        existing.department = department
-                    existing.is_active = is_active
-                    if password:
-                        existing.set_password(password)
-                    existing.save()
-                    updated += 1
+                user = User(
+                    email=email, first_name=first_name, last_name=last_name,
+                    phone=row_cell(headers, row, 'Phone'), role=role, department=department,
+                    is_active=is_active,
+                )
+                if password:
+                    user.set_password(password)
                 else:
-                    if not role:
-                        errors.append({'row': i, 'error': 'Role is required for new users.'})
-                        continue
-                    if not department:
-                        errors.append({'row': i, 'error': 'Department is required for new users.'})
-                        continue
-                    user = User(
-                        email=email, first_name=first_name, last_name=last_name,
-                        phone=row_cell(headers, row, 'Phone'), role=role, department=department,
-                        is_active=is_active,
-                    )
-                    if password:
-                        user.set_password(password)
-                    else:
-                        user.set_unusable_password()
-                    user.save()
-                    created += 1
+                    user.set_unusable_password()
+                user.save()
+                created += 1
+                created_rows.append({'row': i, 'data': _redacted(row)})
             except DjangoValidationError as e:
-                errors.append({'row': i, 'error': '; '.join(e.messages)})
+                errors.append({'row': i, 'error': '; '.join(e.messages), 'data': _redacted(row)})
             except Exception as e:
-                errors.append({'row': i, 'error': str(e)})
+                errors.append({'row': i, 'error': str(e), 'data': _redacted(row)})
 
-        return Response({'created': created, 'updated': updated, 'errors': errors})
+        result = {'created': created, 'skipped': skipped, 'errors': errors}
+        if created_rows or skipped_rows or errors:
+            result['import_report_base64'] = build_import_report_base64(headers, created_rows, skipped_rows, errors)
+            result['import_report_filename'] = 'users_import_report.xlsx'
+        return Response(result)
 
 
 class RoleViewSet(viewsets.ModelViewSet):
     queryset = Role.objects.all()
     serializer_class = RoleSerializer
+    pagination_class = None
 
     def get_permissions(self):
         if self.action == 'create':

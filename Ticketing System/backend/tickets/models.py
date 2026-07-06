@@ -123,6 +123,10 @@ class Ticket(models.Model):
     first_response_at = models.DateTimeField(null=True, blank=True)
     resolved_at = models.DateTimeField(null=True, blank=True)
     closed_at = models.DateTimeField(null=True, blank=True)
+    resolution_note = models.TextField(
+        blank=True,
+        help_text='Mandatory note explaining how the ticket was resolved or why it was closed/cancelled.',
+    )
 
     location = models.CharField(max_length=200, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

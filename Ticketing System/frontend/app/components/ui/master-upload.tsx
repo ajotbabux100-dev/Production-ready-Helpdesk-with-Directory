@@ -1,15 +1,17 @@
 'use client'
 import { useRef, useState } from 'react'
 import api from '@/app/lib/api'
-import { downloadFile } from '@/app/lib/download'
+import { downloadFile, downloadBase64File } from '@/app/lib/download'
 import { Button } from '@/app/components/ui/button'
 import { Modal } from '@/app/components/ui/modal'
-import { Download, Upload, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { Download, Upload, CheckCircle2, AlertTriangle, FileSpreadsheet } from 'lucide-react'
 
 interface ImportResult {
   created: number
-  updated: number
+  skipped: number
   errors: { row: number; error: string }[]
+  import_report_base64?: string
+  import_report_filename?: string
 }
 
 interface MasterUploadProps {
@@ -87,9 +89,21 @@ export function MasterUpload({ templateUrl, importUrl, extraFields, onImported, 
         <div className="p-6 space-y-4">
           {result && (
             <>
-              <div className="flex items-center gap-2 text-green-700 bg-green-50 border border-green-200 rounded-lg p-3 text-sm">
-                <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-                <span>{result.created} created, {result.updated} updated.</span>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-green-700 bg-green-50 border border-green-200 rounded-lg p-3 text-sm flex-1">
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                  <span>{result.created} created, {result.skipped} skipped (already exist).</span>
+                </div>
+                {result.import_report_base64 && (
+                  <button
+                    type="button"
+                    onClick={() => downloadBase64File(result.import_report_base64!, result.import_report_filename || 'import_report.xlsx')}
+                    className="flex items-center gap-1.5 text-xs font-medium text-blue-700 hover:text-blue-800 flex-shrink-0"
+                    title="Download a report listing exactly which rows were created, skipped, or failed"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" /> Download report (.xlsx)
+                  </button>
+                )}
               </div>
               {result.errors.length > 0 && (
                 <div className="space-y-2">
