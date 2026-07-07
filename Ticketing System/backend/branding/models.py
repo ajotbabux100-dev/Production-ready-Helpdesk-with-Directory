@@ -112,6 +112,57 @@ class SystemSettings(models.Model):
     notify_on_ticket_resolved = models.BooleanField(default=True)
     notify_on_sla_breach = models.BooleanField(default=True)
 
+    # ---------- WhatsApp ----------
+    # Provider-agnostic by design: a small set of shared fields covers Meta's
+    # Cloud API and Twilio (the two mainstream providers) plus a "generic
+    # webhook" mode that POSTs {to, message} to any custom endpoint - so a
+    # business using a different BSP (chat-api, Wassenger, a self-hosted
+    # gateway, etc.) can still integrate without new fields/migrations.
+    # `whatsapp_access_token` doubles as Twilio's Auth Token when the
+    # provider is 'twilio', to avoid a near-duplicate secret field.
+    WHATSAPP_PROVIDER_CHOICES = [
+        ('meta_cloud', 'Meta WhatsApp Cloud API'),
+        ('twilio', 'Twilio'),
+        ('generic', 'Generic Webhook'),
+    ]
+    whatsapp_enabled = models.BooleanField(default=False)
+    whatsapp_provider = models.CharField(max_length=20, choices=WHATSAPP_PROVIDER_CHOICES, default='meta_cloud')
+
+    # Meta WhatsApp Cloud API
+    whatsapp_phone_number_id = models.CharField(max_length=50, blank=True)
+    whatsapp_business_account_id = models.CharField(max_length=50, blank=True)
+    # Meta requires an admin-approved message template for any
+    # business-initiated notification (outside a customer's own 24h reply
+    # window) - the template must be approved in Meta Business Manager with
+    # exactly one {{1}} body placeholder, which we fill with the same
+    # human-readable message already built for the in-app notification.
+    whatsapp_template_name = models.CharField(max_length=100, blank=True, default='ticket_notification')
+    whatsapp_template_language = models.CharField(max_length=10, blank=True, default='en_US')
+
+    # Twilio
+    whatsapp_account_sid = models.CharField(max_length=100, blank=True)
+    whatsapp_sender_number = models.CharField(
+        max_length=30, blank=True,
+        help_text='Twilio WhatsApp-enabled sender, e.g. whatsapp:+14155238886',
+    )
+
+    # Generic webhook
+    whatsapp_webhook_url = models.URLField(blank=True)
+
+    # Shared secret (Meta permanent access token / Twilio Auth Token)
+    whatsapp_access_token = models.CharField(max_length=1000, blank=True)
+
+    # ---------- WhatsApp Notification Events ----------
+    # Deliberately separate from the notify_on_* email flags above - an admin
+    # may want SLA breach alerts on WhatsApp but not routine status updates,
+    # independent of what's enabled for email.
+    whatsapp_notify_on_ticket_created = models.BooleanField(default=False)
+    whatsapp_notify_on_ticket_assigned = models.BooleanField(default=False)
+    whatsapp_notify_on_status_updated = models.BooleanField(default=False)
+    whatsapp_notify_on_comment_added = models.BooleanField(default=False)
+    whatsapp_notify_on_ticket_resolved = models.BooleanField(default=False)
+    whatsapp_notify_on_sla_breach = models.BooleanField(default=False)
+
     class Meta:
         verbose_name = 'System Settings'
 

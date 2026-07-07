@@ -143,6 +143,24 @@ export interface SystemSettings {
   notify_on_comment_added: boolean
   notify_on_ticket_resolved: boolean
   notify_on_sla_breach: boolean
+  // WhatsApp
+  whatsapp_enabled: boolean
+  whatsapp_provider: 'meta_cloud' | 'twilio' | 'generic'
+  whatsapp_phone_number_id: string
+  whatsapp_business_account_id: string
+  whatsapp_template_name: string
+  whatsapp_template_language: string
+  whatsapp_account_sid: string
+  whatsapp_sender_number: string
+  whatsapp_webhook_url: string
+  whatsapp_access_token: string
+  // WhatsApp notification toggles
+  whatsapp_notify_on_ticket_created: boolean
+  whatsapp_notify_on_ticket_assigned: boolean
+  whatsapp_notify_on_status_updated: boolean
+  whatsapp_notify_on_comment_added: boolean
+  whatsapp_notify_on_ticket_resolved: boolean
+  whatsapp_notify_on_sla_breach: boolean
 }
 
 export interface SLAPolicy {

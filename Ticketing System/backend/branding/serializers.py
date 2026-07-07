@@ -17,6 +17,13 @@ class SystemSettingsSerializer(serializers.ModelSerializer):
         write_only=True, required=False, allow_blank=True,
         source='email_host_password',
     )
+    # Same masked-read / separate-write pattern as email_host_password above,
+    # for the WhatsApp provider secret (Meta permanent token / Twilio Auth Token).
+    whatsapp_access_token = serializers.SerializerMethodField()
+    whatsapp_access_token_write = serializers.CharField(
+        write_only=True, required=False, allow_blank=True,
+        source='whatsapp_access_token',
+    )
 
     class Meta:
         model = SystemSettings
@@ -41,6 +48,9 @@ class SystemSettingsSerializer(serializers.ModelSerializer):
 
     def get_email_host_password(self, obj):
         return MASK if obj.email_host_password else ''
+
+    def get_whatsapp_access_token(self, obj):
+        return MASK if obj.whatsapp_access_token else ''
 
     def validate_login_highlights(self, value):
         # The settings form submits as multipart/form-data (to carry the logo
@@ -67,4 +77,7 @@ class SystemSettingsSerializer(serializers.ModelSerializer):
         pwd = validated_data.get('email_host_password')
         if pwd == MASK:
             validated_data.pop('email_host_password')
+        token = validated_data.get('whatsapp_access_token')
+        if token == MASK:
+            validated_data.pop('whatsapp_access_token')
         return super().update(instance, validated_data)

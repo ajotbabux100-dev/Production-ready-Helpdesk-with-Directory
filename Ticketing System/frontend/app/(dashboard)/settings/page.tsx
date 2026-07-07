@@ -11,12 +11,13 @@ import { MastersSection } from './MastersSection'
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { Button } from '@/app/components/ui/button'
 import { Input } from '@/app/components/ui/input'
+import { Select } from '@/app/components/ui/select'
 import { Textarea } from '@/app/components/ui/textarea'
 import {
   Settings, Building2, Building, Ticket, Mail, Layout, Tag,
   CheckCircle2, Circle, Upload, X, Eye, EyeOff, Plus, Pencil, Trash2, GripVertical,
   BookOpen, Columns3, Globe, Users as UsersIcon, Edit, ShieldCheck, Lock, UploadCloud, FileEdit,
-  Archive, Download,
+  Archive, Download, MessageCircle,
 } from 'lucide-react'
 import { DepartmentsSection } from './DepartmentsSection'
 import { EmailTemplatesSection } from './EmailTemplatesSection'
@@ -40,6 +41,7 @@ const TABS = [
   { id: 'ticket_numbering', label: 'Ticket Series', icon: Ticket },
   { id: 'email', label: 'Email', icon: Mail },
   { id: 'email_templates', label: 'Email Templates', icon: FileEdit },
+  { id: 'whatsapp', label: 'WhatsApp', icon: MessageCircle },
   { id: 'form_fields', label: 'Form Fields', icon: Settings },
   { id: 'categories', label: 'Categories', icon: Tag },
   { id: 'departments', label: 'Departments', icon: Building },
@@ -69,6 +71,9 @@ const DEFAULT_SETTINGS: Partial<SystemSettings> = {
   ticket_include_year: true, ticket_year_format: 'YYYY',
   ticket_seq_digits: 5, ticket_reset_yearly: true,
   email_sender_name: '', email_sender_address: '', email_reply_to: '', email_footer: '',
+  whatsapp_provider: 'meta_cloud', whatsapp_phone_number_id: '', whatsapp_business_account_id: '',
+  whatsapp_template_name: 'ticket_notification', whatsapp_template_language: 'en_US',
+  whatsapp_account_sid: '', whatsapp_sender_number: '', whatsapp_webhook_url: '',
 }
 
 export default function SettingsPage() {
@@ -99,6 +104,10 @@ export default function SettingsPage() {
   const [backupError, setBackupError] = useState('')
   const [testEmailLoading, setTestEmailLoading] = useState(false)
   const [testEmailResult, setTestEmailResult] = useState<{ success: boolean; message?: string; error?: string } | null>(null)
+  const [showWhatsappToken, setShowWhatsappToken] = useState(false)
+  const [testWhatsappRecipient, setTestWhatsappRecipient] = useState('')
+  const [testWhatsappLoading, setTestWhatsappLoading] = useState(false)
+  const [testWhatsappResult, setTestWhatsappResult] = useState<{ success: boolean; message?: string; error?: string } | null>(null)
   const [loading, setLoading] = useState(true)
 
   // ── Directory masters (tabs, fields, portal categories) ──
@@ -329,6 +338,20 @@ export default function SettingsPage() {
     }
   }
 
+  const handleTestWhatsapp = async () => {
+    setTestWhatsappLoading(true)
+    setTestWhatsappResult(null)
+    try {
+      const res = await api.post('/branding/test-whatsapp/', { recipient: testWhatsappRecipient || undefined })
+      setTestWhatsappResult({ success: true, message: res.data.message })
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { error?: string } } }
+      setTestWhatsappResult({ success: false, error: err.response?.data?.error || 'Failed to send test WhatsApp message.' })
+    } finally {
+      setTestWhatsappLoading(false)
+    }
+  }
+
   const openCatModal = (cat?: TicketCategory) => {
     if (cat) {
       setCatEditing(cat)
@@ -411,7 +434,7 @@ export default function SettingsPage() {
       // placeholder on GET) - the actual writable field is
       // email_host_password_write. Sending it under its own key was silently
       // discarded by the serializer, so the SMTP password never saved.
-      const skip = new Set(['id', 'company_logo', 'company_logo_url', 'favicon', 'favicon_url', 'ticket_number_preview', 'email_host_password'])
+      const skip = new Set(['id', 'company_logo', 'company_logo_url', 'favicon', 'favicon_url', 'ticket_number_preview', 'email_host_password', 'whatsapp_access_token'])
       for (const [k, v] of Object.entries(settings)) {
         if (skip.has(k)) continue
         if (v === null || v === undefined) { fd.append(k, ''); continue }
@@ -422,6 +445,7 @@ export default function SettingsPage() {
         fd.append(k, typeof v === 'object' ? JSON.stringify(v) : String(v))
       }
       fd.append('email_host_password_write', settings.email_host_password || '')
+      fd.append('whatsapp_access_token_write', settings.whatsapp_access_token || '')
       if (logoFile) fd.append('company_logo', logoFile)
       if (faviconFile) fd.append('favicon', faviconFile)
       const bRes = await api.patch('/branding/', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
@@ -1063,6 +1087,194 @@ export default function SettingsPage() {
                 Common SMTP presets — Office 365: <code>smtp.office365.com:587 STARTTLS</code> &nbsp;|&nbsp;
                 Gmail: <code>smtp.gmail.com:587 STARTTLS</code> (use App Password) &nbsp;|&nbsp;
                 Outlook.com: <code>smtp-mail.outlook.com:587 STARTTLS</code>
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* ── WhatsApp ── */}
+      {activeTab === 'whatsapp' && (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>WhatsApp Provider</CardTitle>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-500">{settings.whatsapp_enabled ? 'WhatsApp enabled' : 'WhatsApp disabled'}</span>
+                  <Toggle value={!!settings.whatsapp_enabled} onChange={(v) => set({ whatsapp_enabled: v })} />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <Select
+                label="Provider"
+                value={settings.whatsapp_provider || 'meta_cloud'}
+                onChange={(e) => set({ whatsapp_provider: e.target.value as SystemSettings['whatsapp_provider'] })}
+                options={[
+                  { value: 'meta_cloud', label: 'Meta WhatsApp Cloud API' },
+                  { value: 'twilio', label: 'Twilio' },
+                  { value: 'generic', label: 'Generic Webhook (custom gateway)' },
+                ]}
+              />
+
+              {settings.whatsapp_provider === 'meta_cloud' && (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Input
+                      label="Phone Number ID"
+                      placeholder="From Meta Business Manager"
+                      value={settings.whatsapp_phone_number_id || ''}
+                      onChange={(e) => set({ whatsapp_phone_number_id: e.target.value })}
+                    />
+                    <Input
+                      label="WhatsApp Business Account ID"
+                      placeholder="Optional — for your reference"
+                      value={settings.whatsapp_business_account_id || ''}
+                      onChange={(e) => set({ whatsapp_business_account_id: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Input
+                      label="Template Name"
+                      placeholder="ticket_notification"
+                      value={settings.whatsapp_template_name || ''}
+                      onChange={(e) => set({ whatsapp_template_name: e.target.value })}
+                    />
+                    <Input
+                      label="Template Language Code"
+                      placeholder="en_US"
+                      value={settings.whatsapp_template_language || ''}
+                      onChange={(e) => set({ whatsapp_template_language: e.target.value })}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    This template must be pre-approved in Meta Business Manager with exactly one body
+                    placeholder (<code>{'{{1}}'}</code>) — every notification sends its message text as that
+                    one parameter. Meta requires an approved template for any message we send first (i.e.
+                    every ticket notification), not just a plain chat reply.
+                  </p>
+                </>
+              )}
+
+              {settings.whatsapp_provider === 'twilio' && (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Input
+                      label="Account SID"
+                      placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                      value={settings.whatsapp_account_sid || ''}
+                      onChange={(e) => set({ whatsapp_account_sid: e.target.value })}
+                    />
+                    <Input
+                      label="Sender Number"
+                      placeholder="whatsapp:+14155238886"
+                      value={settings.whatsapp_sender_number || ''}
+                      onChange={(e) => set({ whatsapp_sender_number: e.target.value })}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    Free-form messages work in the Twilio Sandbox and within an existing 24-hour
+                    conversation. A production WhatsApp sender may require an approved Content Template for
+                    the first message to a new recipient — Twilio enforces that on their side.
+                  </p>
+                </>
+              )}
+
+              {settings.whatsapp_provider === 'generic' && (
+                <>
+                  <Input
+                    label="Webhook URL"
+                    placeholder="https://your-gateway.example.com/send"
+                    value={settings.whatsapp_webhook_url || ''}
+                    onChange={(e) => set({ whatsapp_webhook_url: e.target.value })}
+                  />
+                  <p className="text-xs text-gray-400">
+                    We&apos;ll POST <code>{'{ "to": "...", "message": "..." }'}</code> as JSON to this URL,
+                    with the access token below (if set) sent as a <code>Bearer</code> token — use this for
+                    any WhatsApp gateway that isn&apos;t Meta or Twilio.
+                  </p>
+                </>
+              )}
+
+              <div className="relative">
+                <Input
+                  label={settings.whatsapp_provider === 'twilio' ? 'Auth Token' : 'Access Token'}
+                  type={showWhatsappToken ? 'text' : 'password'}
+                  placeholder={settings.whatsapp_access_token ? '••••••••' : 'Enter access token'}
+                  value={settings.whatsapp_access_token || ''}
+                  onChange={(e) => set({ whatsapp_access_token: e.target.value })}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowWhatsappToken((p) => !p)}
+                  className="absolute right-3 bottom-2.5 text-gray-400 hover:text-gray-600"
+                >
+                  {showWhatsappToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between pt-2 flex-wrap gap-3">
+                <div>
+                  <p className="text-sm font-medium text-gray-700">Test recipient phone number</p>
+                  <p className="text-xs text-gray-400">Leave blank to send to your own account phone number</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-full sm:w-56 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder={user?.phone || '+968 9123 4567'}
+                    value={testWhatsappRecipient}
+                    onChange={(e) => setTestWhatsappRecipient(e.target.value)}
+                  />
+                  <button
+                    onClick={handleTestWhatsapp}
+                    disabled={testWhatsappLoading}
+                    className="px-4 py-1.5 bg-blue-900 text-white text-sm font-medium rounded-lg hover:bg-blue-800 disabled:opacity-50 flex items-center gap-2 whitespace-nowrap"
+                  >
+                    {testWhatsappLoading ? <span className="animate-spin w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full" /> : <MessageCircle className="w-3.5 h-3.5" />}
+                    Send Test
+                  </button>
+                </div>
+              </div>
+              {testWhatsappResult && (
+                <div className={`text-sm rounded-lg px-4 py-3 ${testWhatsappResult.success ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                  {testWhatsappResult.success ? '✓ ' : '✗ '}{testWhatsappResult.message || testWhatsappResult.error}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle>WhatsApp Notification Events</CardTitle></CardHeader>
+            <CardContent className="divide-y divide-gray-100">
+              {[
+                { key: 'whatsapp_notify_on_ticket_created', label: 'Ticket Created', desc: 'Notify requester when their ticket is received' },
+                { key: 'whatsapp_notify_on_ticket_assigned', label: 'Ticket Assigned', desc: 'Notify the assigned agent when a ticket is assigned to them' },
+                { key: 'whatsapp_notify_on_status_updated', label: 'Status Changed', desc: 'Notify requester whenever the ticket status changes' },
+                { key: 'whatsapp_notify_on_comment_added', label: 'Comment / Reply Added', desc: 'Notify requester when an agent adds a public reply' },
+                { key: 'whatsapp_notify_on_ticket_resolved', label: 'Ticket Resolved', desc: 'Notify requester when their ticket is marked resolved' },
+                { key: 'whatsapp_notify_on_sla_breach', label: 'SLA Breach', desc: 'Alert the assigned agent when an SLA deadline is missed' },
+              ].map((ev) => (
+                <div key={ev.key} className="flex items-center justify-between py-4">
+                  <div className="flex-1 pr-6">
+                    <p className="font-medium text-gray-900">{ev.label}</p>
+                    <p className="text-sm text-gray-500">{ev.desc}</p>
+                  </div>
+                  <Toggle
+                    value={!!(settings as Record<string, unknown>)[ev.key]}
+                    onChange={(v) => set({ [ev.key]: v } as Partial<SystemSettings>)}
+                  />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-4">
+              <p className="text-xs text-gray-400">
+                Notifications go to a user&apos;s <strong>Phone</strong> field (Users → Edit User) — there&apos;s
+                no separate WhatsApp number, so make sure that field holds a real WhatsApp-reachable number
+                (with country code, e.g. +968 9123 4567) for anyone who should receive these.
               </p>
             </CardContent>
           </Card>

@@ -124,6 +124,33 @@ class TestEmailView(APIView):
             return Response({'success': False, 'error': str(e)}, status=400)
 
 
+class TestWhatsAppView(APIView):
+    """POST /api/branding/test-whatsapp/ — sends a test WhatsApp message
+    using the saved provider config, mirroring TestEmailView."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if not request.user.has_perm_key('settings', 'edit'):
+            return Response({'error': 'You do not have permission to edit settings.'}, status=403)
+
+        recipient = request.data.get('recipient') or request.user.phone
+        if not recipient:
+            return Response({'error': 'No recipient phone number.'}, status=400)
+
+        s = SystemSettings.get()
+        if not s.whatsapp_enabled:
+            return Response({'error': 'WhatsApp is disabled. Enable it in the WhatsApp tab first.'}, status=400)
+
+        from notifications.whatsapp import send_whatsapp_message
+        ok = send_whatsapp_message(recipient, f'This is a test WhatsApp message from {s.portal_name or "Helpdesk"}.')
+        if not ok:
+            return Response(
+                {'error': 'Could not send - check the provider credentials and recipient number, then check the server logs for details.'},
+                status=400,
+            )
+        return Response({'success': True, 'message': f'Test WhatsApp message sent to {recipient}'})
+
+
 class FullBackupView(APIView):
     """GET /api/branding/full-backup/ - one-click download of the entire
     system: a consistent snapshot of the database plus every media file

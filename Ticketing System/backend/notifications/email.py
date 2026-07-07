@@ -152,6 +152,21 @@ def _notify_enabled(flag_name):
     return getattr(s, flag_name, True)
 
 
+def _send_whatsapp(flag_name, recipient, message):
+    """Best-effort WhatsApp send alongside the email/in-app notification for
+    the same event - mirrors _notify_enabled's flag lookup but against the
+    separate whatsapp_notify_on_* flags, and silently no-ops if the
+    recipient has no phone number on file or WhatsApp isn't configured."""
+    if not recipient or not getattr(recipient, 'phone', ''):
+        return
+    from branding.models import SystemSettings
+    s = SystemSettings.get()
+    if not s.whatsapp_enabled or not getattr(s, flag_name, False):
+        return
+    from .whatsapp import send_whatsapp_message
+    send_whatsapp_message(recipient.phone, message)
+
+
 def _push(recipient, ticket, notification_type, title, message):
     """Create an in-app Notification record for the given recipient."""
     from .models import Notification
@@ -186,6 +201,7 @@ def notify_ticket_created(ticket):
     title = f'Ticket {ticket.ticket_number} received'
     message = f'Your ticket "{ticket.title}" has been received and is being reviewed.'
     _push(ticket.requester, ticket, 'ticket_created', title, message)
+    _send_whatsapp('whatsapp_notify_on_ticket_created', ticket.requester, message)
 
     ctx = {
         'ticket': ticket,
@@ -224,6 +240,7 @@ def notify_ticket_created(ticket):
             if not (member.is_admin or member.has_perm_key('tickets', 'claim')):
                 continue
             _push(member, ticket, 'ticket_assigned', pool_title, pool_message)
+            _send_whatsapp('whatsapp_notify_on_ticket_assigned', member, pool_message)
             send_ticket_email(
                 f'[{ticket.ticket_number}] New ticket available in {dept.name}',
                 member.email,
@@ -241,6 +258,7 @@ def notify_ticket_assigned(ticket):
     title = f'Ticket {ticket.ticket_number} assigned to you'
     message = f'"{ticket.title}" has been assigned to you. Priority: {ticket.get_priority_display()}.'
     _push(ticket.assigned_to, ticket, 'ticket_assigned', title, message)
+    _send_whatsapp('whatsapp_notify_on_ticket_assigned', ticket.assigned_to, message)
 
     ctx = {'ticket': ticket, '_plain_text': f'Ticket {ticket.ticket_number} has been assigned to you.'}
     send_ticket_email(
@@ -258,6 +276,7 @@ def notify_status_updated(ticket):
     title = f'Ticket {ticket.ticket_number} status updated'
     message = f'Your ticket "{ticket.title}" status changed to {ticket.get_status_display()}.'
     _push(ticket.requester, ticket, 'status_updated', title, message)
+    _send_whatsapp('whatsapp_notify_on_status_updated', ticket.requester, message)
 
     ctx = {'ticket': ticket, '_plain_text': f'Ticket {ticket.ticket_number} status updated to {ticket.get_status_display()}.'}
     send_ticket_email(
@@ -275,6 +294,7 @@ def notify_comment_added(ticket):
     title = f'New reply on ticket {ticket.ticket_number}'
     message = f'A new update has been posted on your ticket "{ticket.title}".'
     _push(ticket.requester, ticket, 'comment_added', title, message)
+    _send_whatsapp('whatsapp_notify_on_comment_added', ticket.requester, message)
 
     ctx = {'ticket': ticket, '_plain_text': f'A new update has been posted on ticket {ticket.ticket_number}.'}
     send_ticket_email(
@@ -292,6 +312,7 @@ def notify_ticket_resolved(ticket):
     title = f'Ticket {ticket.ticket_number} resolved'
     message = f'Your ticket "{ticket.title}" has been resolved.'
     _push(ticket.requester, ticket, 'ticket_resolved', title, message)
+    _send_whatsapp('whatsapp_notify_on_ticket_resolved', ticket.requester, message)
 
     ctx = {'ticket': ticket, '_plain_text': f'Ticket {ticket.ticket_number} has been resolved.'}
     send_ticket_email(
@@ -339,6 +360,7 @@ def notify_sla_breach(ticket):
         title = f'SLA breach — ticket {ticket.ticket_number}'
         message = f'SLA resolution deadline has been breached for ticket "{ticket.title}".'
         _push(ticket.assigned_to, ticket, 'sla_breach', title, message)
+        _send_whatsapp('whatsapp_notify_on_sla_breach', ticket.assigned_to, message)
 
         ctx = {'ticket': ticket, '_plain_text': f'SLA breach alert for ticket {ticket.ticket_number}.'}
         send_ticket_email(
