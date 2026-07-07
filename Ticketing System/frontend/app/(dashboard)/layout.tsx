@@ -33,8 +33,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   // Close the mobile drawer on route changes (e.g. after a client-side
   // navigation that isn't caught by the Sidebar link's own onClick, such as
-  // browser back/forward).
-  useEffect(() => { setMobileNavOpen(false) }, [pathname])
+  // browser back/forward). Guarded so it's a true no-op on desktop (where
+  // this is already false on every navigation) instead of relying on
+  // React's same-value bailout - avoids any extra scheduled work landing
+  // during the router's in-flight transition for that same navigation.
+  useEffect(() => {
+    setMobileNavOpen((open) => (open ? false : open))
+  }, [pathname])
 
   // Log out after N minutes with no mouse/keyboard/touch/scroll activity.
   // Without this, the axios interceptor's silent token refresh (api.ts) keeps

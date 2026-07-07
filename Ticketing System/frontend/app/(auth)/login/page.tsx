@@ -1,7 +1,6 @@
 'use client'
 import { Suspense, useEffect, useState } from 'react'
-import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { useAuthStore } from '@/app/lib/store'
 import api from '@/app/lib/api'
 import { SystemSettings } from '@/app/lib/types'
@@ -17,7 +16,6 @@ export default function LoginPage() {
 }
 
 function LoginPageInner() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const setAuth = useAuthStore((s) => s.setAuth)
   const user = useAuthStore((s) => s.user)
@@ -35,10 +33,11 @@ function LoginPageInner() {
     api.get('/branding/').then((r) => setBranding(r.data)).catch(() => {})
   }, [])
 
-  // Already logged in with a valid token — skip the login page
+  // Already logged in with a valid token — skip the login page.
+  // Hard navigation (not router.replace) - see handleSubmit below for why.
   useEffect(() => {
-    if (hasHydrated && user && accessToken) router.replace('/dashboard')
-  }, [hasHydrated, user, accessToken, router])
+    if (hasHydrated && user && accessToken) window.location.href = '/dashboard'
+  }, [hasHydrated, user, accessToken])
 
   const bg = branding?.primary_color || '#1e3a5f'
 
@@ -49,7 +48,12 @@ function LoginPageInner() {
     try {
       const res = await api.post('/auth/login/', { email, password })
       setAuth(res.data.user, res.data.access, res.data.refresh)
-      router.push('/dashboard')
+      // Hard navigation (not router.push) - Next's client-side "soft"
+      // navigation was unreliably leaving the login screen on-screen after
+      // a successful login (URL changed to /dashboard, content didn't),
+      // needing a second click somewhere to actually render it. A real
+      // page load always renders correctly.
+      window.location.href = '/dashboard'
     } catch (err: any) {
       setError(err.response?.data?.error || 'Incorrect email or password.')
     } finally {
@@ -194,7 +198,8 @@ function LoginPageInner() {
 
             <p className="mt-6 text-center text-xs text-gray-400">
               Forgot your password?{' '}
-              <Link href="/forgot-password" className="text-blue-600 hover:underline">Reset it</Link>
+              {/* Plain <a>, not next/link - see handleSubmit for why */}
+              <a href="/forgot-password" className="text-blue-600 hover:underline">Reset it</a>
             </p>
           </div>
         </div>

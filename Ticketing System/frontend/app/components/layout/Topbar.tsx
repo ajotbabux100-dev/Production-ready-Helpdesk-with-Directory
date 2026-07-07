@@ -1,6 +1,6 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { Bell, LogOut, User, ChevronDown, Menu } from 'lucide-react'
 import { useAuthStore } from '@/app/lib/store'
 import api from '@/app/lib/api'
@@ -23,24 +23,34 @@ interface TopbarProps {
 }
 
 export function Topbar({ onMenuClick }: TopbarProps) {
-  const router = useRouter()
   const pathname = usePathname()
   const { user, clearAuth, refreshToken } = useAuthStore()
   const [unread, setUnread] = useState(0)
   const [menuOpen, setMenuOpen] = useState(false)
 
+  // Deliberately NOT keyed on `pathname` - this used to refetch on every
+  // single navigation, which meant an async setState from the fetch's
+  // .then() could land while Next's router transition for that same
+  // navigation was still being committed. A normal-priority update
+  // stepping on a low-priority transition like that is exactly what caused
+  // this app's earlier hydration bug (see DashboardLayout's history): the
+  // new page's content would silently fail to paint until some later
+  // higher-priority event (another click) forced React to flush it. The
+  // periodic interval already keeps this fresh without that risk.
   useEffect(() => {
     const refresh = () =>
       api.get('/notifications/unread_count/').then((r) => setUnread(r.data.count)).catch(() => {})
     refresh()
     const id = setInterval(refresh, 60000)
     return () => clearInterval(id)
-  }, [pathname])
+  }, [])
 
   const handleLogout = async () => {
     try { await api.post('/auth/logout/', { refresh: refreshToken }) } catch {}
     clearAuth()
-    router.push('/login')
+    // Hard navigation (not router.push) - guarantees a full, clean reload
+    // of the login page rather than relying on Next's client-side transition.
+    window.location.href = '/login'
   }
 
   // Resolve current page title
@@ -60,9 +70,9 @@ export function Topbar({ onMenuClick }: TopbarProps) {
       {/* Page title */}
       <p className="text-sm font-semibold text-gray-700 flex-1 truncate">{title}</p>
 
-      {/* Bell */}
+      {/* Bell - hard navigation (not router.push), see Sidebar for why */}
       <button
-        onClick={() => router.push('/notifications')}
+        onClick={() => { window.location.href = '/notifications' }}
         className="relative p-2 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
       >
         <Bell className="w-5 h-5" />
@@ -98,7 +108,7 @@ export function Topbar({ onMenuClick }: TopbarProps) {
                 <p className="text-xs text-gray-400 mt-0.5">{user?.email}</p>
               </div>
               <button
-                onClick={() => { setMenuOpen(false); router.push('/profile') }}
+                onClick={() => { setMenuOpen(false); window.location.href = '/profile' }}
                 className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
               >
                 <User className="w-4 h-4 text-gray-400" /> My Profile

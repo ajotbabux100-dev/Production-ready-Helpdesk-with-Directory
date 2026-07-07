@@ -1,5 +1,4 @@
 'use client'
-import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { cn } from '@/app/lib/utils'
@@ -138,7 +137,12 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
               whileTap={{ scale: 0.97 }}
               transition={{ type: 'spring', stiffness: 400, damping: 25 }}
             >
-              <Link
+              {/* Plain <a>, not next/link - forces a real full-page
+                  navigation on every click instead of Next's client-side
+                  "soft" transition, which was unreliably leaving the old
+                  page on screen after the URL changed (needing a second
+                  click to actually render the destination). */}
+              <a
                 href={item.href}
                 onClick={onClose}
                 className={cn(
@@ -159,7 +163,7 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
                 {active && (
                   <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: bgColor }} />
                 )}
-              </Link>
+              </a>
             </motion.div>
           )
         })}

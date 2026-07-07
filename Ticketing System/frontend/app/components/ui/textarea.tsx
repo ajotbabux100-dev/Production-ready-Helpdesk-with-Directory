@@ -15,7 +15,10 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
           ref={ref}
           rows={4}
           className={cn(
-            'w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm resize-y',
+            // Explicit bg/text color (not just inherited) - a client OS/
+            // browser in dark mode would otherwise auto-style this textarea
+            // with a dark background or light text that doesn't match.
+            'w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm resize-y bg-white text-gray-900',
             'focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500',
             error && 'border-red-500 focus:border-red-500 focus:ring-red-500',
             className

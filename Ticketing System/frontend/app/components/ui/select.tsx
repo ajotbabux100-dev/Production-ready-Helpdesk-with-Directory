@@ -16,7 +16,10 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
         <select
           ref={ref}
           className={cn(
-            'w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm bg-white',
+            // Explicit text color (not just inherited) - a client OS/browser
+            // in dark mode would otherwise auto-style this <select> with
+            // light text, invisible against the explicit white background.
+            'w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm bg-white text-gray-900',
             'focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500',
             'disabled:bg-gray-50 disabled:text-gray-500',
             error && 'border-red-500 focus:border-red-500 focus:ring-red-500',

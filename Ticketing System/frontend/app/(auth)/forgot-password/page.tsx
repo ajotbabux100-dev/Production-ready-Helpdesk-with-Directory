@@ -1,6 +1,5 @@
 'use client'
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 import api from '@/app/lib/api'
 import { SystemSettings } from '@/app/lib/types'
 import { Ticket, Eye, EyeOff, ArrowLeft, CheckCircle2, Mail } from 'lucide-react'
@@ -78,13 +77,14 @@ export default function ForgotPasswordPage() {
               <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-4" />
               <h2 className="text-xl font-bold text-gray-900 mb-1">Password reset</h2>
               <p className="text-sm text-gray-500 mb-6">Your password has been changed. You can now sign in with your new password.</p>
-              <Link
+              {/* Plain <a>, not next/link - see login page's handleSubmit for why */}
+              <a
                 href="/login"
                 className="inline-flex items-center justify-center w-full h-11 rounded-xl text-white font-semibold text-sm"
                 style={{ backgroundColor: bg }}
               >
                 Back to Sign In
-              </Link>
+              </a>
             </div>
           ) : step === 'email' ? (
             <>
@@ -124,9 +124,9 @@ export default function ForgotPasswordPage() {
                 </button>
               </form>
 
-              <Link href="/login" className="mt-6 flex items-center justify-center gap-1.5 text-xs text-gray-400 hover:text-gray-600">
+              <a href="/login" className="mt-6 flex items-center justify-center gap-1.5 text-xs text-gray-400 hover:text-gray-600">
                 <ArrowLeft className="w-3.5 h-3.5" /> Back to Sign In
-              </Link>
+              </a>
             </>
           ) : (
             <>

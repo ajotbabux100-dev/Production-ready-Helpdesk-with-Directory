@@ -1,8 +1,15 @@
 @import "tailwindcss";
 
+/* This app is light-themed only - deliberately not adapting to the client
+   OS/browser's dark mode preference. Without `color-scheme: light`, a
+   client set to dark mode gets native form controls (<select>, <option>,
+   scrollbars, etc.) auto-styled dark by the browser regardless of our CSS,
+   which combined with our light backgrounds produced invisible white-on-
+   white text in dropdowns. */
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  color-scheme: light;
 }
 
 @theme inline {
@@ -10,13 +17,6 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
