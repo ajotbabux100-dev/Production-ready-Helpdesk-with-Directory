@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import api from '@/app/lib/api'
 import { useHasPerm } from '@/app/lib/store'
+import { safeHref } from '@/app/lib/utils'
 import { VaultEntry } from '@/app/lib/types'
 import { Button } from '@/app/components/ui/button'
 import { Input } from '@/app/components/ui/input'
@@ -208,9 +209,13 @@ export default function VaultPage() {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">{entry.title}</p>
                   {entry.url && (
-                    <a href={entry.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-700 hover:underline inline-flex items-center gap-0.5">
-                      {entry.url} <ExternalLink className="w-3 h-3" />
-                    </a>
+                    safeHref(entry.url) ? (
+                      <a href={safeHref(entry.url)} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-700 hover:underline inline-flex items-center gap-0.5">
+                        {entry.url} <ExternalLink className="w-3 h-3" />
+                      </a>
+                    ) : (
+                      <span className="text-xs text-gray-400 truncate block" title="Only http(s) links can be opened">{entry.url}</span>
+                    )
                   )}
                 </div>
                 <div className="flex items-center gap-1 flex-shrink-0">

@@ -214,6 +214,13 @@ class UserViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         import re
         from django.utils import timezone
+        from rest_framework.exceptions import ValidationError
+
+        if instance.is_last_active_super_admin:
+            raise ValidationError(
+                'This is the last active Super Admin user. Assign the Super Admin role '
+                'to another active user before deleting this account.'
+            )
 
         # Alias is scoped to the original first name, not a global counter -
         # deleting "ajo" gives #ajo1, deleting a later user also named "ajo"
@@ -291,6 +298,12 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response(UserSerializer(user).data)
 
         new_role = Role.objects.get(pk=role_id)
+        if user.is_last_active_super_admin and not new_role.is_super:
+            return Response(
+                {'error': 'You are the last active Super Admin user - switch someone else into '
+                           'that role before switching yourself out of it.'},
+                status=400,
+            )
         old_dept_id = user.department_id
         was_manager_tier = user.has_perm_key('tickets', 'manage_escalated')
         user.role = new_role
@@ -498,10 +511,15 @@ class RoleViewSet(viewsets.ModelViewSet):
 
     def perform_destroy(self, instance):
         from django.db.models import ProtectedError
+        from rest_framework.exceptions import ValidationError
+
+        if instance.is_super and not Role.objects.filter(is_super=True).exclude(pk=instance.pk).exists():
+            raise ValidationError(
+                'At least one role must remain a super role, or you could lock everyone out of Settings.'
+            )
         try:
             instance.delete()
         except ProtectedError:
-            from rest_framework.exceptions import ValidationError
             raise ValidationError('This role still has users assigned - reassign them to another role first.')
 
 

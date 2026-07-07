@@ -73,6 +73,21 @@ class UserSerializer(serializers.ModelSerializer):
         validate_password(value)
         return value
 
+    def validate(self, attrs):
+        # Block edits (role change away from super, or deactivation) that
+        # would leave the system with zero active Super Admin users - the
+        # only way back in at that point would be direct DB access.
+        if self.instance is not None and self.instance.is_last_active_super_admin:
+            new_role = attrs.get('role', self.instance.role)
+            new_is_active = attrs.get('is_active', self.instance.is_active)
+            still_super_active = bool(new_role and new_role.is_super and new_is_active)
+            if not still_super_active:
+                raise serializers.ValidationError(
+                    'This is the last active Super Admin user. Assign the Super Admin role '
+                    'to another active user before changing this one.'
+                )
+        return attrs
+
     def create(self, validated_data):
         password = validated_data.pop('password', None)
         assignable_roles = validated_data.pop('assignable_roles', None)

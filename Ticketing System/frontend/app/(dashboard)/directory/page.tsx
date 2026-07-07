@@ -1,9 +1,9 @@
-'use client'
+﻿'use client'
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 import api from '@/app/lib/api'
 import { StaffDirectoryEntry, DirectoryTab, Portal, PortalCategory } from '@/app/lib/types'
 import { useHasPerm } from '@/app/lib/store'
+import { safeHref } from '@/app/lib/utils'
 import { Button } from '@/app/components/ui/button'
 import { Input } from '@/app/components/ui/input'
 import { Select } from '@/app/components/ui/select'
@@ -188,14 +188,14 @@ export default function DirectoryPage() {
         </div>
         <div className="flex items-center gap-2">
           {isAdmin && (
-            <Link href="/settings?tab=masters">
+            <a href="/settings?tab=masters">
               <Button variant="outline"><Upload className="w-4 h-4 mr-1.5" /> Master Upload</Button>
-            </Link>
+            </a>
           )}
           {isAdmin && (
-            <Link href="/settings?tab=directory">
+            <a href="/settings?tab=directory">
               <Button variant="outline"><Settings2 className="w-4 h-4 mr-1.5" /> Manage Tabs &amp; Categories</Button>
-            </Link>
+            </a>
           )}
           {canAddEdit && activeTab === 'portals' && (
             <Button onClick={openCreatePortal}><Plus className="w-4 h-4 mr-1.5" /> Add Portal</Button>
@@ -228,7 +228,7 @@ export default function DirectoryPage() {
         </button>
         {tabs.length === 0 && activeTab !== 'portals' && (
           <p className="text-sm text-gray-400 px-1 py-1.5">
-            No tabs yet — {isAdmin ? <>use "Manage Tabs &amp; Categories" above to create one.</> : 'ask an admin to create one in Settings.'}
+            No tabs yet â€” {isAdmin ? <>use "Manage Tabs &amp; Categories" above to create one.</> : 'ask an admin to create one in Settings.'}
           </p>
         )}
       </div>
@@ -311,9 +311,13 @@ export default function DirectoryPage() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <a href={p.url} target="_blank" rel="noopener noreferrer" className="text-blue-700 hover:underline inline-flex items-center gap-1">
-                      {p.url} <ExternalLink className="w-3 h-3" />
-                    </a>
+                    {safeHref(p.url) ? (
+                      <a href={safeHref(p.url)} target="_blank" rel="noopener noreferrer" className="text-blue-700 hover:underline inline-flex items-center gap-1">
+                        {p.url} <ExternalLink className="w-3 h-3" />
+                      </a>
+                    ) : (
+                      <span className="text-gray-400" title="Only http(s) links can be opened">{p.url}</span>
+                    )}
                   </td>
                   {canAddEdit && (
                     <td className="px-4 py-3">
@@ -338,7 +342,7 @@ export default function DirectoryPage() {
         <div className="border border-gray-200 rounded-xl overflow-hidden bg-white overflow-x-auto">
           {activeFields.length === 0 && (
             <p className="px-4 py-3 text-xs text-gray-400 border-b border-gray-100">
-              This tab has no details defined yet — {isAdmin ? <>manage them from Settings &rarr; Directory.</> : 'ask an admin to add some in Settings.'}
+              This tab has no details defined yet â€” {isAdmin ? <>manage them from Settings &rarr; Directory.</> : 'ask an admin to add some in Settings.'}
             </p>
           )}
           <table className="w-full text-sm">
@@ -380,7 +384,7 @@ export default function DirectoryPage() {
         </div>
       ) : (
         <p className="text-sm text-gray-400 px-1 py-6 text-center">
-          {isAdmin ? 'Create a tab in Settings → Directory to start adding entries.' : 'No directory tabs have been set up yet.'}
+          {isAdmin ? 'Create a tab in Settings â†’ Directory to start adding entries.' : 'No directory tabs have been set up yet.'}
         </p>
       )}
 
@@ -420,7 +424,7 @@ export default function DirectoryPage() {
             value={portalForm.category}
             onChange={(ev) => setPortalForm((f) => ({ ...f, category: ev.target.value }))}
           />
-          <p className="text-xs text-gray-400">The logo is fetched automatically from the site itself — no upload needed.</p>
+          <p className="text-xs text-gray-400">The logo is fetched automatically from the site itself â€” no upload needed.</p>
           <div className="flex gap-3 justify-end pt-2">
             <Button variant="outline" onClick={() => setPortalModalOpen(false)}>Cancel</Button>
             <Button onClick={handleSavePortal} loading={saving}>{editingPortal ? 'Save Changes' : 'Add Portal'}</Button>

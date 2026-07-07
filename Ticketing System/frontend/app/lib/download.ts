@@ -33,13 +33,18 @@ export async function postAndDownloadFile(url: string, fallbackName: string) {
 
 /** Content types a browser can render natively in a tab, rather than just
  * offering to save. Anything else (Office docs, zips, etc.) has no sane
- * in-browser view, so those should just download instead. */
+ * in-browser view, so those should just download instead.
+ *
+ * Deliberately excludes text/* and image/svg+xml even though browsers can
+ * "render" them - viewFile() opens these via a same-origin blob: URL, so an
+ * uploaded text/html file (or an SVG with an embedded <script>) would run
+ * with full access to this app's origin, including whatever's in
+ * localStorage. Only allow content types that can't carry script. */
 export function isViewableInBrowser(contentType: string): boolean {
   return (
-    contentType.startsWith('image/') ||
+    (contentType.startsWith('image/') && contentType !== 'image/svg+xml') ||
     contentType === 'application/pdf' ||
-    contentType.startsWith('text/') ||
-    contentType === 'audio/mpeg' || contentType.startsWith('audio/') ||
+    contentType.startsWith('audio/') ||
     contentType.startsWith('video/')
   )
 }

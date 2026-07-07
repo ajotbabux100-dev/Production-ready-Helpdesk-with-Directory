@@ -1,6 +1,5 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Bell, Ticket, MessageSquare, AlertTriangle, UserCheck, Clock, Check, X } from 'lucide-react'
 import api from '@/app/lib/api'
@@ -35,7 +34,6 @@ const LAST_SEEN_KEY = 'notif_last_seen_id'
 const MAX_VISIBLE_TOASTS = 4
 
 export function NotificationToasts() {
-  const router = useRouter()
   const [toasts, setToasts] = useState<Notification[]>([])
   const lastSeenIdRef = useRef<number>(
     typeof window === 'undefined' ? 0 : Number(window.localStorage.getItem(LAST_SEEN_KEY) || 0)
@@ -89,7 +87,7 @@ export function NotificationToasts() {
   const handleClick = async (n: Notification) => {
     dismiss(n.id)
     try { await api.patch(`/notifications/${n.id}/mark_read/`) } catch {}
-    if (n.ticket) router.push(`/tickets/${n.ticket}`)
+    if (n.ticket) window.location.href = `/tickets/${n.ticket}`
   }
 
   return (

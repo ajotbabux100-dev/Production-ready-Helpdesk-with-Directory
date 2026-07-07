@@ -2,6 +2,12 @@ from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Permis
 from django.db import models
 from django.utils import timezone
 
+# Name used when auto-creating the built-in super role (createsuperuser, or
+# the "no super role exists yet" migration safety net). Just a label - the
+# is_super flag is what actually grants full access, so admins are free to
+# rename this role afterward without losing anything.
+SUPER_ADMIN_ROLE_NAME = 'Super Admin'
+
 
 class Role(models.Model):
     """An admin-editable role: a name plus a set of permission keys
@@ -42,7 +48,9 @@ class UserManager(BaseUserManager):
     def create_superuser(self, email, password=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
-        admin_role, _ = Role.objects.get_or_create(name='admin', defaults={'is_super': True})
+        admin_role = Role.objects.filter(is_super=True).first()
+        if admin_role is None:
+            admin_role, _ = Role.objects.get_or_create(name=SUPER_ADMIN_ROLE_NAME, defaults={'is_super': True})
         extra_fields.setdefault('role', admin_role)
         return self.create_user(email, password, **extra_fields)
 
@@ -117,6 +125,18 @@ class User(AbstractBaseUser, PermissionsMixin):
         if not self.role_id:
             return False
         return self.role.has_perm(module, action)
+
+    @property
+    def is_last_active_super_admin(self):
+        """True if this user is currently a live (active, not deleted) holder
+        of a super role, and no other user could stand in for them - used to
+        block the one action sequence that would permanently lock every
+        admin out of Settings/Users/Roles with no way back in."""
+        if not (self.is_active and not self.is_deleted and self.role_id and self.role.is_super):
+            return False
+        return not User.objects.filter(
+            role__is_super=True, is_active=True, is_deleted=False,
+        ).exclude(pk=self.pk).exists()
 
 
 class PasswordResetOTP(models.Model):

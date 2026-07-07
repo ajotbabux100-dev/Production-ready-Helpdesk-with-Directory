@@ -1,5 +1,5 @@
 'use client'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { cn } from '@/app/lib/utils'
 import { useAuthStore, useHasPerm } from '@/app/lib/store'
@@ -38,7 +38,6 @@ interface SidebarProps {
 
 export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const pathname  = usePathname()
-  const router    = useRouter()
   const { user, clearAuth, refreshToken } = useAuthStore()
   const isStaff   = useHasPerm('tickets', 'claim')
   const [branding, setBranding] = useState<Pick<SystemSettings, 'company_name' | 'portal_name' | 'company_logo_url' | 'primary_color' | 'powered_by_text'> | null>(null)
@@ -65,7 +64,7 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
   const handleLogout = async () => {
     try { await api.post('/auth/logout/', { refresh: refreshToken }) } catch {}
     clearAuth()
-    router.replace('/login')
+    window.location.href = '/login'
   }
 
   const initials = user

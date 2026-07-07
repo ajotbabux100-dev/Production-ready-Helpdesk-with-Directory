@@ -14,6 +14,34 @@ class IdleAwareJWTAuthentication(JWTAuthentication):
     notification-count poll) would keep a truly idle session alive forever.
     """
 
+    def get_user(self, validated_token):
+        # Every authenticated request touches user.role (has_perm_key/
+        # is_admin, checked on nearly every view) and often user.department
+        # too - without this, simplejwt's default get_user() does a bare
+        # User.objects.get(), so both FKs cost a second/third query on every
+        # single request rather than being joined into the first one.
+        from .models import User
+        from rest_framework_simplejwt.settings import api_settings
+        from rest_framework_simplejwt.exceptions import InvalidToken
+        from rest_framework.exceptions import AuthenticationFailed as DRFAuthenticationFailed
+
+        try:
+            user_id = validated_token[api_settings.USER_ID_CLAIM]
+        except KeyError:
+            raise InvalidToken('Token contained no recognizable user identification')
+
+        try:
+            user = User.objects.select_related('role', 'department').get(
+                **{api_settings.USER_ID_FIELD: user_id}
+            )
+        except User.DoesNotExist:
+            raise DRFAuthenticationFailed('User not found', code='user_not_found')
+
+        if not user.is_active:
+            raise DRFAuthenticationFailed('User is inactive', code='user_inactive')
+
+        return user
+
     def authenticate(self, request):
         result = super().authenticate(request)
         if result is None:

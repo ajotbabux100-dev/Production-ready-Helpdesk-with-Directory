@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { useAuthStore } from '@/app/lib/store'
 import { Sidebar } from '@/app/components/layout/Sidebar'
 import { Topbar } from '@/app/components/layout/Topbar'
@@ -17,13 +17,12 @@ const HEARTBEAT_INTERVAL_MS = 60 * 1000
 
 // Module-level (not state) so the idle-timeout effect and the generic
 // "user is gone, redirect to /login" effect below agree on the same target
-// URL no matter which one's router.replace() actually lands last - without
-// this, the generic effect's plain '/login' redirect can win the race and
+// URL no matter which one's redirect actually lands last - without this,
+// the generic effect's plain '/login' redirect can win the race and
 // silently strip the '?reason=idle' the idle timer set.
 let pendingLogoutReason: 'idle' | null = null
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const router = useRouter()
   const pathname = usePathname()
   const user = useAuthStore((s) => s.user)
   const hasHydrated = useAuthStore((s) => s._hasHydrated)
@@ -63,7 +62,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       try { await api.post('/auth/logout/', { refresh: refreshToken }) } catch {}
       pendingLogoutReason = 'idle'
       clearAuth()
-      router.replace('/login?reason=idle')
+      window.location.href = '/login?reason=idle'
     }
 
     const resetTimer = () => {
@@ -83,17 +82,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
       ACTIVITY_EVENTS.forEach((e) => window.removeEventListener(e, resetTimer))
     }
-  }, [user, refreshToken, clearAuth, router])
+  }, [user, refreshToken, clearAuth])
 
   useEffect(() => {
     // Only redirect once Zustand has finished rehydrating from localStorage.
     // Without this guard, a page refresh briefly shows user=null before
     // the persisted session is restored, causing a spurious logout redirect.
     if (hasHydrated && !user) {
-      router.replace(pendingLogoutReason === 'idle' ? '/login?reason=idle' : '/login')
+      window.location.href = pendingLogoutReason === 'idle' ? '/login?reason=idle' : '/login'
       pendingLogoutReason = null
     }
-  }, [hasHydrated, user, router])
+  }, [hasHydrated, user])
 
   // While the store is rehydrating, render nothing to avoid a flash.
   if (!hasHydrated) {

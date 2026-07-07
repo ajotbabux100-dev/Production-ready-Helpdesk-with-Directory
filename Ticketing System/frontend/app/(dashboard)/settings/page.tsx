@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import api from '@/app/lib/api'
 import { downloadFile } from '@/app/lib/download'
 import { SystemSettings, TicketFormConfig, TicketCategory, DirectoryTab, DirectoryField, PortalCategory, Role } from '@/app/lib/types'
@@ -72,7 +72,6 @@ const DEFAULT_SETTINGS: Partial<SystemSettings> = {
 }
 
 export default function SettingsPage() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const user = useAuthStore((s) => s.user)
   const canView = useHasPerm('settings', 'view')
@@ -124,7 +123,7 @@ export default function SettingsPage() {
   const faviconRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    if (user && !canView) { router.push('/dashboard'); return }
+    if (user && !canView) { window.location.href = '/dashboard'; return }
     Promise.all([
       api.get('/branding/'),
       api.get('/tickets/form-config/'),
@@ -142,7 +141,7 @@ export default function SettingsPage() {
       setLoading(false)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, router, canView])
+  }, [user, canView])
 
   const fetchDirTabs = async () => {
     const res = await api.get('/directory/tabs/')

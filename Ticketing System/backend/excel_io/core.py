@@ -22,6 +22,25 @@ class BadUpload(Exception):
 HEADER_FONT = Font(bold=True, color='FFFFFF')
 HEADER_FILL = PatternFill(start_color='1E3A5F', end_color='1E3A5F', fill_type='solid')
 
+# Leading characters Excel/LibreOffice/Sheets treat as "this cell is a
+# formula" when the file is opened - a value like "=cmd|'/c calc'!A1" typed
+# into a ticket title, directory entry, or imported spreadsheet round-trips
+# untouched into every report/export we generate and would execute on open
+# (CSV/Excel injection). Neutralized by prefixing with a leading apostrophe,
+# which Excel renders as plain text and openpyxl writes as a literal value
+# rather than a formula.
+_FORMULA_PREFIXES = ('=', '+', '-', '@')
+
+
+def _sanitize_cell(value):
+    if isinstance(value, str) and value[:1] in _FORMULA_PREFIXES:
+        return "'" + value
+    return value
+
+
+def _sanitize_row(row):
+    return [_sanitize_cell(v) for v in row]
+
 
 def _style_header_row(ws, headers):
     ws.append(list(headers))
@@ -52,7 +71,7 @@ def build_template(filename, headers, notes=None, sample_rows=None):
     _style_header_row(ws, headers)
 
     for row in (sample_rows or []):
-        ws.append(list(row))
+        ws.append(_sanitize_row(row))
 
     if notes:
         notes_ws = wb.create_sheet('Instructions')
@@ -75,7 +94,7 @@ def build_workbook(filename, sheets):
         ws = wb.create_sheet(sheet_name[:31])  # Excel sheet name limit
         _style_header_row(ws, headers)
         for row in rows:
-            ws.append(list(row))
+            ws.append(_sanitize_row(row))
     return _as_response(wb, filename)
 
 
@@ -96,19 +115,19 @@ def build_import_report_base64(headers, created_rows, skipped_rows, error_rows):
         ws = wb.create_sheet('Created')
         _style_header_row(ws, ['Row', *headers])
         for r in created_rows:
-            ws.append([r['row'], *(r.get('data') or [])])
+            ws.append(_sanitize_row([r['row'], *(r.get('data') or [])]))
 
     if skipped_rows:
         ws = wb.create_sheet('Skipped (Already Exists)')
         _style_header_row(ws, ['Row', *headers])
         for r in skipped_rows:
-            ws.append([r['row'], *(r.get('data') or [])])
+            ws.append(_sanitize_row([r['row'], *(r.get('data') or [])]))
 
     if error_rows:
         ws = wb.create_sheet('Errors')
         _style_header_row(ws, ['Row', 'Error', *headers])
         for err in error_rows:
-            ws.append([err['row'], err['error'], *(err.get('data') or [])])
+            ws.append(_sanitize_row([err['row'], err['error'], *(err.get('data') or [])]))
 
     if not wb.sheetnames:
         wb.create_sheet('Report')

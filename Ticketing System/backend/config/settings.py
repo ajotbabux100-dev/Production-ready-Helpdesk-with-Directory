@@ -199,6 +199,14 @@ SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
 # HTTPS-only settings — enable when your server has TLS
 USE_HTTPS = config('USE_HTTPS', default=False, cast=bool)
 if USE_HTTPS:
+    # nginx terminates TLS and proxies to Django over plain HTTP, so without
+    # this Django has no way to know the original request was HTTPS - every
+    # request looks insecure to it, which breaks SECURE_SSL_REDIRECT (redirect
+    # loop) and would mark genuinely-HTTPS requests as insecure. nginx sets
+    # X-Forwarded-Proto itself ($scheme) on every proxied request, so this is
+    # trustworthy as long as Django is only reachable through that proxy
+    # (true here - waitress binds 127.0.0.1 only).
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SECURE_SSL_REDIRECT = True
     SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True

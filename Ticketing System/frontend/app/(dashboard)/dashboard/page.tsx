@@ -1,6 +1,5 @@
-'use client'
+﻿'use client'
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 import { useAuthStore, useHasPerm } from '@/app/lib/store'
 import api from '@/app/lib/api'
 import { DashboardSummary, Ticket, STATUS_COLORS } from '@/app/lib/types'
@@ -99,7 +98,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      {/* ── Header ── */}
+      {/* â”€â”€ Header â”€â”€ */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{greeting(user?.first_name || 'there')}</h1>
@@ -107,21 +106,21 @@ export default function DashboardPage() {
             {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </p>
         </div>
-        <Link href="/tickets/new">
+        <a href="/tickets/new">
           <Button className="gap-2 shadow-sm">
             <Plus className="w-4 h-4" /> New Ticket
           </Button>
-        </Link>
+        </a>
       </div>
 
-      {/* ── Bento Grid ── */}
+      {/* â”€â”€ Bento Grid â”€â”€ */}
       <div className="grid grid-cols-12 gap-4 auto-rows-auto">
 
-        {/* ── Top stat strip ── */}
+        {/* â”€â”€ Top stat strip â”€â”€ */}
         {isAgent ? (
           <>
             {/* Total */}
-            <Link href="/tickets" className="col-span-12 sm:col-span-6 lg:col-span-3">
+            <a href="/tickets" className="col-span-12 sm:col-span-6 lg:col-span-3">
               <motion.div
                 custom={0} variants={fadeUp} initial="hidden" animate="show"
                 whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
@@ -135,10 +134,10 @@ export default function DashboardPage() {
                   <p className="text-sm text-gray-500">Total Tickets</p>
                 </div>
               </motion.div>
-            </Link>
+            </a>
 
             {/* Open */}
-            <Link href="/tickets?status__in=assigned,in_progress,escalated" className="col-span-12 sm:col-span-6 lg:col-span-3">
+            <a href="/tickets?status__in=assigned,in_progress,escalated" className="col-span-12 sm:col-span-6 lg:col-span-3">
               <motion.div
                 custom={1} variants={fadeUp} initial="hidden" animate="show"
                 whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
@@ -152,10 +151,10 @@ export default function DashboardPage() {
                   <p className="text-sm text-gray-500">Open</p>
                 </div>
               </motion.div>
-            </Link>
+            </a>
 
             {/* Pending */}
-            <Link href="/tickets?status__in=pending_user,pending_vendor" className="col-span-12 sm:col-span-6 lg:col-span-3">
+            <a href="/tickets?status__in=pending_user,pending_vendor" className="col-span-12 sm:col-span-6 lg:col-span-3">
               <motion.div
                 custom={2} variants={fadeUp} initial="hidden" animate="show"
                 whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
@@ -169,10 +168,10 @@ export default function DashboardPage() {
                   <p className="text-sm text-gray-500">Pending</p>
                 </div>
               </motion.div>
-            </Link>
+            </a>
 
             {/* SLA Breached */}
-            <Link href="/tickets?sla_breached=true" className="col-span-12 sm:col-span-6 lg:col-span-3">
+            <a href="/tickets?sla_breached=true" className="col-span-12 sm:col-span-6 lg:col-span-3">
               <motion.div
                 custom={3} variants={fadeUp} initial="hidden" animate="show"
                 whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
@@ -186,11 +185,11 @@ export default function DashboardPage() {
                   <p className={`text-sm ${(s?.sla_breached ?? 0) > 0 ? 'text-red-600' : 'text-gray-500'}`}>SLA Breached</p>
                 </div>
               </motion.div>
-            </Link>
+            </a>
           </>
         ) : (
           <>
-            <Link href="/tickets" className="col-span-12 sm:col-span-4">
+            <a href="/tickets" className="col-span-12 sm:col-span-4">
               <motion.div custom={0} variants={fadeUp} initial="hidden" animate="show" whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
                 className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 cursor-pointer h-full">
                 <div className="w-12 h-12 rounded-xl bg-blue-900 flex items-center justify-center flex-shrink-0">
@@ -201,8 +200,8 @@ export default function DashboardPage() {
                   <p className="text-sm text-gray-500">Total Submitted</p>
                 </div>
               </motion.div>
-            </Link>
-            <Link href="/tickets?status__in=assigned,in_progress,escalated" className="col-span-12 sm:col-span-4">
+            </a>
+            <a href="/tickets?status__in=assigned,in_progress,escalated" className="col-span-12 sm:col-span-4">
               <motion.div custom={1} variants={fadeUp} initial="hidden" animate="show" whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
                 className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 cursor-pointer h-full">
                 <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center flex-shrink-0">
@@ -213,8 +212,8 @@ export default function DashboardPage() {
                   <p className="text-sm text-gray-500">Open</p>
                 </div>
               </motion.div>
-            </Link>
-            <Link href="/tickets?status=resolved" className="col-span-12 sm:col-span-4">
+            </a>
+            <a href="/tickets?status=resolved" className="col-span-12 sm:col-span-4">
               <motion.div custom={2} variants={fadeUp} initial="hidden" animate="show" whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
                 className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 cursor-pointer h-full">
                 <div className="w-12 h-12 rounded-xl bg-green-50 flex items-center justify-center flex-shrink-0">
@@ -225,11 +224,11 @@ export default function DashboardPage() {
                   <p className="text-sm text-gray-500">Resolved</p>
                 </div>
               </motion.div>
-            </Link>
+            </a>
           </>
         )}
 
-        {/* ── My Queue (agents) — tall left card ── */}
+        {/* â”€â”€ My Queue (agents) â€” tall left card â”€â”€ */}
         {isAgent && (
           <motion.div
             custom={4} variants={fadeUp} initial="hidden" animate="show"
@@ -242,9 +241,9 @@ export default function DashboardPage() {
                   <span className="bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full">{myTickets.length}</span>
                 )}
               </div>
-              <Link href="/tickets" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+              <a href="/tickets" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
                 View all <ArrowRight className="w-3 h-3" />
-              </Link>
+              </a>
             </div>
             {myTickets.length === 0 ? (
               <div className="px-5 py-14 text-center text-gray-400">
@@ -255,67 +254,67 @@ export default function DashboardPage() {
             ) : (
               <div className="divide-y divide-gray-50">
                 {myTickets.map((t) => (
-                  <Link key={t.id} href={`/tickets/${t.id}`}
+                  <a key={t.id} href={`/tickets/${t.id}`}
                     className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors group">
                     <div className={`w-1 self-stretch rounded-full flex-shrink-0 ${PRIORITY_BAR[t.priority] ?? 'bg-gray-300'}`} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate group-hover:text-blue-700">{t.title}</p>
                       <p className="text-xs text-gray-400 mt-0.5">
-                        {t.ticket_number} · {t.department_detail?.name || 'No dept'} · {formatDate(t.created_at)}
+                        {t.ticket_number} Â· {t.department_detail?.name || 'No dept'} Â· {formatDate(t.created_at)}
                       </p>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       <SLABadge ticket={t} />
                       <Badge className={`${STATUS_COLORS[t.status]} text-xs`}>{t.status_display}</Badge>
                     </div>
-                  </Link>
+                  </a>
                 ))}
               </div>
             )}
           </motion.div>
         )}
 
-        {/* ── Right column (agents): mini stats + chart ── */}
+        {/* â”€â”€ Right column (agents): mini stats + chart â”€â”€ */}
         {isAgent && (
           <motion.div
             custom={5} variants={fadeUp} initial="hidden" animate="show"
             className="col-span-12 lg:col-span-5 grid grid-cols-2 gap-4 content-start">
 
             {/* Assigned to me */}
-            <Link href="/tickets?assigned_to_me=true" className="col-span-1">
+            <a href="/tickets?assigned_to_me=true" className="col-span-1">
               <div className="bg-gradient-to-br from-blue-900 to-blue-700 rounded-2xl p-5 text-white hover:shadow-lg transition-shadow cursor-pointer h-full">
                 <ClipboardCheck className="w-5 h-5 mb-3 opacity-70" />
                 <p className="text-3xl font-bold">{s?.assigned_to_me ?? 0}</p>
                 <p className="text-sm text-blue-200 mt-1">Assigned to me</p>
               </div>
-            </Link>
+            </a>
 
             {/* New unread */}
-            <Link href="/tickets?status=new" className="col-span-1">
+            <a href="/tickets?status=new" className="col-span-1">
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition-shadow cursor-pointer h-full">
                 <Circle className="w-5 h-5 mb-3 text-indigo-400" />
                 <p className="text-3xl font-bold text-gray-900">{s?.new ?? 0}</p>
                 <p className="text-sm text-gray-500 mt-1">New unread</p>
               </div>
-            </Link>
+            </a>
 
             {/* Resolved */}
-            <Link href="/tickets?status=resolved" className="col-span-1">
+            <a href="/tickets?status=resolved" className="col-span-1">
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition-shadow cursor-pointer h-full">
                 <CheckCircle2 className="w-5 h-5 mb-3 text-green-500" />
                 <p className="text-3xl font-bold text-gray-900">{s?.resolved ?? 0}</p>
                 <p className="text-sm text-gray-500 mt-1">Resolved</p>
               </div>
-            </Link>
+            </a>
 
             {/* Closed */}
-            <Link href="/tickets?status=closed" className="col-span-1">
+            <a href="/tickets?status=closed" className="col-span-1">
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 hover:shadow-md transition-shadow cursor-pointer h-full">
                 <TrendingUp className="w-5 h-5 mb-3 text-gray-400" />
                 <p className="text-3xl font-bold text-gray-900">{s?.closed ?? 0}</p>
                 <p className="text-sm text-gray-500 mt-1">Closed</p>
               </div>
-            </Link>
+            </a>
 
             {/* Status breakdown chart */}
             {pieData.length > 0 && (
@@ -348,7 +347,7 @@ export default function DashboardPage() {
           </motion.div>
         )}
 
-        {/* ── Latest Activity / Recent Tickets ── */}
+        {/* â”€â”€ Latest Activity / Recent Tickets â”€â”€ */}
         <motion.div
           custom={6} variants={fadeUp} initial="hidden" animate="show"
           className="col-span-12 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -357,28 +356,28 @@ export default function DashboardPage() {
               <Activity className="w-4 h-4 text-blue-900" />
               <h2 className="font-semibold text-gray-900">{isAgent ? 'Latest Activity' : 'Recent Tickets'}</h2>
             </div>
-            <Link href="/tickets" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+            <a href="/tickets" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
               View all <ArrowRight className="w-3 h-3" />
-            </Link>
+            </a>
           </div>
           {recentTickets.length === 0 ? (
             <div className="px-5 py-12 text-center">
               <TicketIcon className="w-8 h-8 mx-auto mb-2 text-gray-200" />
               <p className="text-sm text-gray-400 mb-3">No tickets yet</p>
-              <Link href="/tickets/new"><Button size="sm">Submit first ticket</Button></Link>
+              <a href="/tickets/new"><Button size="sm">Submit first ticket</Button></a>
             </div>
           ) : (
             <div className={`grid ${isAgent ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'} divide-y sm:divide-y-0 divide-x-0 sm:divide-x divide-gray-50`}>
               {recentTickets.slice(0, isAgent ? 8 : 8).map((t) => (
-                <Link key={t.id} href={`/tickets/${t.id}`}
+                <a key={t.id} href={`/tickets/${t.id}`}
                   className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors group border-b border-gray-50">
                   <div className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_BAR[t.priority] ?? 'bg-gray-300'}`} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-800 truncate group-hover:text-blue-700">{t.title}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{t.ticket_number} · {formatDate(t.created_at)}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{t.ticket_number} Â· {formatDate(t.created_at)}</p>
                   </div>
                   <Badge className={`${STATUS_COLORS[t.status]} text-xs flex-shrink-0`}>{t.status_display}</Badge>
-                </Link>
+                </a>
               ))}
             </div>
           )}

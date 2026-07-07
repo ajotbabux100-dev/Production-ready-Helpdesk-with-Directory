@@ -1,6 +1,5 @@
-'use client'
+﻿'use client'
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 import api from '@/app/lib/api'
 import { User, Department, Role } from '@/app/lib/types'
 import { Card } from '@/app/components/ui/card'
@@ -135,14 +134,22 @@ export default function UsersPage() {
   }
 
   const toggleActive = async (user: User) => {
-    const res = await api.patch(`/auth/users/${user.id}/`, { is_active: !user.is_active })
-    setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, ...res.data } : u)))
+    try {
+      const res = await api.patch(`/auth/users/${user.id}/`, { is_active: !user.is_active })
+      setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, ...res.data } : u)))
+    } catch (e: any) {
+      alert(e.response?.data?.non_field_errors?.[0] || 'Could not update this user.')
+    }
   }
 
   const deleteUser = async (id: number) => {
-    await api.delete(`/auth/users/${id}/`)
-    setUsers((prev) => prev.filter((u) => u.id !== id))
-    setDeleteConfirmId(null)
+    try {
+      await api.delete(`/auth/users/${id}/`)
+      setUsers((prev) => prev.filter((u) => u.id !== id))
+      setDeleteConfirmId(null)
+    } catch (e: any) {
+      alert(e.response?.data?.[0] || e.response?.data?.detail || 'Could not delete this user.')
+    }
   }
 
   const openHistory = async (user: User) => {
@@ -188,9 +195,9 @@ export default function UsersPage() {
             </Button>
           )}
           {canAdd && (
-            <Link href="/settings?tab=masters">
+            <a href="/settings?tab=masters">
               <Button variant="outline"><Upload className="w-4 h-4 mr-1.5" /> Master Upload</Button>
-            </Link>
+            </a>
           )}
           <Button onClick={openCreate}><Plus className="w-4 h-4 mr-1.5" /> Add User</Button>
         </div>
@@ -216,7 +223,7 @@ export default function UsersPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={7} className="text-center py-12 text-gray-400">Loading…</td></tr>
+                <tr><td colSpan={7} className="text-center py-12 text-gray-400">Loadingâ€¦</td></tr>
               ) : users.map((user) => (
                 deleteConfirmId === user.id ? (
                   <tr key={user.id} className="border-b border-red-100 bg-red-50">
@@ -263,7 +270,7 @@ export default function UsersPage() {
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{user.department_name ?? '—'}</td>
+                  <td className="px-4 py-3 text-gray-600">{user.department_name ?? 'â€”'}</td>
                   <td className="px-4 py-3">
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${user.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                       {user.is_active ? 'Active' : 'Inactive'}
@@ -294,8 +301,8 @@ export default function UsersPage() {
         </div>
       </Card>
 
-      {/* ── Login History Modal ── */}
-      <Modal open={historyOpen} onClose={() => setHistoryOpen(false)} title={`Login History — ${historyUser?.full_name ?? ''}`} size="lg">
+      {/* â”€â”€ Login History Modal â”€â”€ */}
+      <Modal open={historyOpen} onClose={() => setHistoryOpen(false)} title={`Login History â€” ${historyUser?.full_name ?? ''}`} size="lg">
         <div className="p-6">
           {historyLoading ? (
             <div className="flex items-center justify-center py-12">
@@ -333,8 +340,8 @@ export default function UsersPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-gray-600 text-xs">{formatDate(log.timestamp)}</td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">{log.device ?? '—'}</td>
-                      <td className="px-4 py-3 text-gray-400 text-xs font-mono">{log.ip_address ?? '—'}</td>
+                      <td className="px-4 py-3 text-gray-500 text-xs">{log.device ?? 'â€”'}</td>
+                      <td className="px-4 py-3 text-gray-400 text-xs font-mono">{log.ip_address ?? 'â€”'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -344,8 +351,8 @@ export default function UsersPage() {
         </div>
       </Modal>
 
-      {/* ── Login History Modal (all users) ── */}
-      <Modal open={allHistoryOpen} onClose={() => setAllHistoryOpen(false)} title="Login History — All Users" size="xl">
+      {/* â”€â”€ Login History Modal (all users) â”€â”€ */}
+      <Modal open={allHistoryOpen} onClose={() => setAllHistoryOpen(false)} title="Login History â€” All Users" size="xl">
         <div className="p-6 space-y-4">
           <Input
             placeholder="Search by name or email..."
@@ -377,7 +384,7 @@ export default function UsersPage() {
                   {allHistoryLogs.map((log) => (
                     <tr key={log.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
-                        <p className="text-gray-900 font-medium">{log.user_name ?? '—'}</p>
+                        <p className="text-gray-900 font-medium">{log.user_name ?? 'â€”'}</p>
                         <p className="text-gray-400 text-xs">{log.user_email}</p>
                       </td>
                       <td className="px-4 py-3">
@@ -393,8 +400,8 @@ export default function UsersPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-gray-600 text-xs">{formatDate(log.timestamp)}</td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">{log.device ?? '—'}</td>
-                      <td className="px-4 py-3 text-gray-400 text-xs font-mono">{log.ip_address ?? '—'}</td>
+                      <td className="px-4 py-3 text-gray-500 text-xs">{log.device ?? 'â€”'}</td>
+                      <td className="px-4 py-3 text-gray-400 text-xs font-mono">{log.ip_address ?? 'â€”'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -415,6 +422,11 @@ export default function UsersPage() {
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit User' : 'Add User'} size="lg">
         <div className="p-6 space-y-4">
+          {errors.non_field_errors && (
+            <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+              {errors.non_field_errors}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-4">
             <Input label="First Name *" value={form.first_name} onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))} error={errors.first_name} />
             <Input label="Last Name *" value={form.last_name} onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))} error={errors.last_name} />
@@ -427,6 +439,7 @@ export default function UsersPage() {
               options={roles.map((r) => ({ value: r.id, label: r.name.replace('_', ' ') }))}
               value={form.role}
               onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
+              error={errors.role}
             />
             <Select
               label="Department *"
@@ -456,7 +469,7 @@ export default function UsersPage() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Additional Roles (switchable)</label>
             <p className="text-xs text-gray-400 mb-2">
-              The user can switch between "Role" above and any of these from their profile — useful for staff who wear more than one hat.
+              The user can switch between "Role" above and any of these from their profile â€” useful for staff who wear more than one hat.
             </p>
             <div className="flex flex-wrap gap-2">
               {roles.filter((r) => String(r.id) !== form.role).map((r) => (

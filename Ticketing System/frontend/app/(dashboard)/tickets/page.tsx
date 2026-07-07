@@ -1,7 +1,6 @@
-'use client'
+﻿'use client'
 import { useEffect, useState, useCallback } from 'react'
-import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { useAuthStore, useHasPerm } from '@/app/lib/store'
 import api from '@/app/lib/api'
 import { Ticket, PaginatedResponse, STATUS_COLORS, PRIORITY_COLORS } from '@/app/lib/types'
@@ -74,7 +73,7 @@ function SLACell({ ticket }: { ticket: Ticket }) {
       )
     }
   }
-  return <span className="text-gray-300 text-xs">—</span>
+  return <span className="text-gray-300 text-xs">â€”</span>
 }
 
 const PAGE_SIZE = 20
@@ -94,7 +93,6 @@ export default function TicketsPage() {
   const user = useAuthStore((s) => s.user)
   const isStaff = useHasPerm('tickets', 'claim')
   const canViewAll = useHasPerm('tickets', 'view_all')
-  const router = useRouter()
   const searchParams = useSearchParams()
   const [tab, setTab] = useState<TabType>('active')
   const [tickets, setTickets] = useState<Ticket[]>([])
@@ -121,7 +119,7 @@ export default function TicketsPage() {
     .map(([k, v]) => QUICK_FILTER_LABELS[`${k}:${v}`] || `${k}=${v}`)
     .join(', ')
 
-  const clearQuickFilter = () => router.push('/tickets')
+  const clearQuickFilter = () => { window.location.href = '/tickets' }
 
   const fetchTickets = useCallback(async () => {
     setLoading(true)
@@ -186,7 +184,7 @@ export default function TicketsPage() {
   useEffect(() => { fetchTickets() }, [fetchTickets])
 
   const switchTab = (t: TabType) => {
-    if (quickFilterActive) router.replace('/tickets')
+    if (quickFilterActive) { window.location.href = '/tickets'; return }
     setTab(t)
     setStatus('')
     setSearch('')
@@ -214,15 +212,15 @@ export default function TicketsPage() {
             {quickFilterActive
               ? `${count} ${quickFilterLabel.toLowerCase()}`
               : <>{count} {tab === 'active' ? 'active' : tab === 'resolved' ? 'resolved/closed' : tab}
-                  {search || status || priority ? ' · filtered' : ''}</>
+                  {search || status || priority ? ' Â· filtered' : ''}</>
             }
           </p>
         </div>
-        <Link href="/tickets/new">
+        <a href="/tickets/new">
           <Button className="gap-2 shadow-sm">
             <Plus className="w-4 h-4" /> New Ticket
           </Button>
-        </Link>
+        </a>
       </div>
 
       {quickFilterActive && (
@@ -405,7 +403,7 @@ export default function TicketsPage() {
                   className={`hover:bg-gray-50 transition-colors group ${ticket.is_sla_resolution_breached && tab === 'active' ? 'border-l-2 border-l-red-400' : ''}`}
                 >
                   <td className="px-5 py-4">
-                    <Link href={`/tickets/${ticket.id}`} className="block">
+                    <a href={`/tickets/${ticket.id}`} className="block">
                       <div className="flex items-center gap-2.5">
                         <div className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_DOT[ticket.priority] || 'bg-gray-300'}`} />
                         <div>
@@ -413,7 +411,7 @@ export default function TicketsPage() {
                           <p className="text-xs text-gray-400 font-mono mt-0.5">{ticket.ticket_number}</p>
                         </div>
                       </div>
-                    </Link>
+                    </a>
                   </td>
                   <td className="px-4 py-4">
                     <Badge className={PRIORITY_COLORS[ticket.priority]}>{ticket.priority_display}</Badge>
@@ -422,9 +420,9 @@ export default function TicketsPage() {
                     <Badge className={STATUS_COLORS[ticket.status]}>{ticket.status_display}</Badge>
                   </td>
                   {isStaff && (
-                    <td className="px-4 py-4 text-gray-600 text-sm">{ticket.requester_detail?.full_name || '—'}</td>
+                    <td className="px-4 py-4 text-gray-600 text-sm">{ticket.requester_detail?.full_name || 'â€”'}</td>
                   )}
-                  <td className="px-4 py-4 text-gray-600 text-sm">{ticket.department_detail?.name || '—'}</td>
+                  <td className="px-4 py-4 text-gray-600 text-sm">{ticket.department_detail?.name || 'â€”'}</td>
                   {isStaff && (
                     <td className="px-4 py-4 text-gray-600 text-sm">
                       {ticket.assigned_to_detail?.full_name || <span className="text-gray-300">Unassigned</span>}
@@ -449,7 +447,7 @@ export default function TicketsPage() {
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-5 py-3.5 border-t border-gray-100 bg-gray-50/50">
             <p className="text-sm text-gray-400">
-              {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, count)} of {count}
+              {(page - 1) * PAGE_SIZE + 1}â€“{Math.min(page * PAGE_SIZE, count)} of {count}
             </p>
             <div className="flex items-center gap-1">
               <button

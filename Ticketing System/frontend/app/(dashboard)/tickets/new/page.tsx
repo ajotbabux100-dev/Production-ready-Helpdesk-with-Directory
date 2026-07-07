@@ -1,6 +1,5 @@
-'use client'
+﻿'use client'
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import api from '@/app/lib/api'
 import { Department, TicketFormConfig, TicketCategory } from '@/app/lib/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card'
@@ -9,7 +8,6 @@ import { Input } from '@/app/components/ui/input'
 import { Select } from '@/app/components/ui/select'
 import { Textarea } from '@/app/components/ui/textarea'
 import { ArrowLeft, Paperclip, X, Zap } from 'lucide-react'
-import Link from 'next/link'
 
 const PRIORITIES = [
   { value: 'low', label: 'Low' },
@@ -30,7 +28,6 @@ function req(label: string, required: boolean) {
 }
 
 export default function NewTicketPage() {
-  const router = useRouter()
   const [departments, setDepartments] = useState<Department[]>([])
   const [categories, setCategories] = useState<TicketCategory[]>([])
   const [config, setConfig] = useState<TicketFormConfig>(DEFAULT_CONFIG)
@@ -114,7 +111,7 @@ export default function NewTicketPage() {
         })
       }
 
-      router.push(`/tickets/${ticketId}`)
+      window.location.href = `/tickets/${ticketId}`
     } catch (err: any) {
       const data = err.response?.data
       if (data && typeof data === 'object') {
@@ -130,11 +127,11 @@ export default function NewTicketPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <Link href="/tickets">
+        <a href="/tickets">
           <button className="p-2 rounded-lg hover:bg-gray-100 text-gray-500">
             <ArrowLeft className="w-5 h-5" />
           </button>
-        </Link>
+        </a>
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Submit New Ticket</h1>
           <p className="text-sm text-gray-500">Fill in the details to submit a support request</p>
@@ -265,9 +262,9 @@ export default function NewTicketPage() {
         </Card>
 
         <div className="flex gap-3 justify-end">
-          <Link href="/tickets">
+          <a href="/tickets">
             <Button variant="outline" type="button">Cancel</Button>
-          </Link>
+          </a>
           <Button type="submit" loading={loading}>Submit Ticket</Button>
         </div>
       </form>

@@ -1,7 +1,6 @@
-'use client'
+﻿'use client'
 import { useEffect, useState, useRef } from 'react'
-import { useParams, useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { useParams } from 'next/navigation'
 import { useAuthStore, useHasPerm } from '@/app/lib/store'
 import api from '@/app/lib/api'
 import { downloadFile, viewFile, isViewableInBrowser } from '@/app/lib/download'
@@ -121,7 +120,6 @@ function getMentionContext(text: string, cursorPos: number): { atIndex: number; 
 
 export default function TicketDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const router = useRouter()
   const user = useAuthStore((s) => s.user)
   const isStaff = useHasPerm('tickets', 'claim')
   const canEscalate = useHasPerm('tickets', 'escalate')
@@ -182,7 +180,7 @@ export default function TicketDetailPage() {
       if (dept) params.set('department', String(dept))
       excludeIds.forEach((eid) => params.append('exclude', String(eid)))
       api.get(`/auth/users/mentionable/?${params}`).then((r) => setMentionUsers(r.data)).catch(() => {})
-    } catch { router.push('/tickets') }
+    } catch { window.location.href = '/tickets' }
     finally { setLoading(false) }
   }
 
@@ -370,7 +368,7 @@ export default function TicketDetailPage() {
   const activeParticipants = (ticket.participants ?? []).filter((p) => p.status !== 'exited')
   const myParticipation = (ticket.participants ?? []).find((p) => p.user === user?.id && p.status !== 'exited')
 
-  // filtered mention list — respect the department's mention_scope setting
+  // filtered mention list â€” respect the department's mention_scope setting
   const q = mentionQuery.toLowerCase()
   const deptMentionScope = ticket.department_detail?.mention_scope ?? 'all'
   const filterUsers = (list: MentionUser[]) =>
@@ -388,11 +386,11 @@ export default function TicketDetailPage() {
     <div className="space-y-4 print:hidden">
       {/* Top bar */}
       <div className="flex items-start gap-3">
-        <Link href="/tickets" className="print:hidden">
+        <a href="/tickets" className="print:hidden">
           <button className="p-2 mt-1 rounded-xl hover:bg-gray-100 text-gray-400 transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </button>
-        </Link>
+        </a>
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-1.5">
             <span className="text-sm font-mono text-gray-400">{ticket.ticket_number}</span>
@@ -418,7 +416,7 @@ export default function TicketDetailPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* ── Left: description + activity ── */}
+        {/* â”€â”€ Left: description + activity â”€â”€ */}
         <div className="lg:col-span-2 space-y-4">
           {/* Description */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 print:break-inside-avoid">
@@ -475,10 +473,10 @@ export default function TicketDetailPage() {
                       <p className="text-sm text-gray-700">
                         {h.description}
                         {h.old_value && h.new_value && (
-                          <span className="text-gray-400"> ({h.old_value_display} → {h.new_value_display})</span>
+                          <span className="text-gray-400"> ({h.old_value_display} â†’ {h.new_value_display})</span>
                         )}
                       </p>
-                      <p className="text-xs text-gray-400 mt-0.5">{h.user_name} • {formatDate(h.timestamp)}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{h.user_name} â€¢ {formatDate(h.timestamp)}</p>
                     </div>
                   </div>
                 ))}
@@ -557,7 +555,7 @@ export default function TicketDetailPage() {
             {visibleComments.length === 0 && (
               <div className="text-center py-6">
                 <MessageSquare className="w-8 h-8 mx-auto text-gray-200 mb-2" />
-                <p className="text-sm text-gray-400">No comments yet — be the first to reply</p>
+                <p className="text-sm text-gray-400">No comments yet â€” be the first to reply</p>
               </div>
             )}
 
@@ -650,7 +648,7 @@ export default function TicketDetailPage() {
                             <div className="min-w-0">
                               <p className="text-sm font-medium text-gray-900 truncate">{u.full_name}</p>
                               <p className="text-xs text-gray-400 truncate">
-                                {u.department_name ? `${u.department_name} · ` : ''}{u.email}
+                                {u.department_name ? `${u.department_name} Â· ` : ''}{u.email}
                               </p>
                             </div>
                             <span className="ml-auto text-xs text-gray-300 capitalize shrink-0">{u.role.replace('_', ' ')}</span>
@@ -760,7 +758,7 @@ export default function TicketDetailPage() {
           </div>
         </div>
 
-        {/* ── Right: details + actions ── */}
+        {/* â”€â”€ Right: details + actions â”€â”€ */}
         <div className="space-y-4">
           {/* SLA status */}
           {ticket.sla_resolution_due && <SLAStatus ticket={ticket} />}
@@ -774,7 +772,7 @@ export default function TicketDetailPage() {
                 { icon: Tag, label: 'Category', value: ticket.category_display },
                 {
                   icon: Building2, label: 'Department',
-                  value: ticket.department_detail?.name || '—'
+                  value: ticket.department_detail?.name || 'â€”'
                 },
                 {
                   icon: UserIcon, label: 'Requester',
@@ -840,7 +838,7 @@ export default function TicketDetailPage() {
                         {p.user === user?.id && <span className="text-gray-400 font-normal"> (you)</span>}
                       </p>
                       <p className="text-xs text-gray-400">
-                        Invited by {p.invited_by_detail?.full_name ?? 'system'} · {formatDate(p.invited_at)}
+                        Invited by {p.invited_by_detail?.full_name ?? 'system'} Â· {formatDate(p.invited_at)}
                       </p>
                     </div>
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
@@ -887,7 +885,7 @@ export default function TicketDetailPage() {
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4 print:hidden">
               <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Actions</h2>
 
-              {/* Escalation lock — agents cannot act while ticket is escalated */}
+              {/* Escalation lock â€” agents cannot act while ticket is escalated */}
               {ticket.status === 'escalated' && !canManageEscalated ? (
                 <div className="flex items-start gap-3 bg-orange-50 border border-orange-200 rounded-xl p-4">
                   <TrendingUp className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
@@ -1023,7 +1021,7 @@ export default function TicketDetailPage() {
                     )}
                   </div>
 
-                  {/* Escalate to Manager — agents only, ticket not already escalated */}
+                  {/* Escalate to Manager â€” agents only, ticket not already escalated */}
                   {canEscalate && (
                     <div className="border-t border-gray-50 pt-4 space-y-2">
                       <button
@@ -1155,10 +1153,10 @@ export default function TicketDetailPage() {
             ['Category', ticket.category_display],
             ['Priority', ticket.priority_display],
             ['Status', ticket.status_display],
-            ['Department', ticket.department_detail?.name || '—'],
-            ['Requester', ticket.requester_detail?.full_name || '—'],
+            ['Department', ticket.department_detail?.name || 'â€”'],
+            ['Requester', ticket.requester_detail?.full_name || 'â€”'],
             ['Assigned To', ticket.assigned_to_detail?.full_name || 'Unassigned'],
-            ['Location', ticket.location || '—'],
+            ['Location', ticket.location || 'â€”'],
             ['Created', formatDate(ticket.created_at)],
             ...(ticket.resolved_at ? [['Resolved At', formatDate(ticket.resolved_at)]] : []),
             ...(ticket.closed_at ? [['Closed At', formatDate(ticket.closed_at)]] : []),
@@ -1214,7 +1212,7 @@ export default function TicketDetailPage() {
                   <td className="py-1 pr-2 align-top whitespace-nowrap">{formatDate(h.timestamp)}</td>
                   <td className="py-1 pr-2 align-top">{h.description}</td>
                   <td className="py-1 pr-2 align-top whitespace-nowrap">
-                    {h.old_value && h.new_value ? `${h.old_value_display} -> ${h.new_value_display}` : '—'}
+                    {h.old_value && h.new_value ? `${h.old_value_display} -> ${h.new_value_display}` : 'â€”'}
                   </td>
                   <td className="py-1 align-top">{h.user_name}</td>
                 </tr>
@@ -1232,7 +1230,7 @@ export default function TicketDetailPage() {
               <p className="font-semibold">
                 {c.author_detail.full_name}{' '}
                 <span className="font-normal text-gray-600">
-                  — {formatDate(c.created_at)}{c.is_internal ? ' (Internal)' : ''}
+                  â€” {formatDate(c.created_at)}{c.is_internal ? ' (Internal)' : ''}
                 </span>
               </p>
               <p className="whitespace-pre-wrap">{c.body}</p>

@@ -93,9 +93,9 @@ class Ticket(models.Model):
     ticket_number = models.CharField(max_length=20, unique=True, editable=False)
     title = models.CharField(max_length=300)
     description = models.TextField()
-    category = models.CharField(max_length=100, blank=True)
-    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default=MEDIUM)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=NEW)
+    category = models.CharField(max_length=100, blank=True, db_index=True)
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default=MEDIUM, db_index=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=NEW, db_index=True)
 
     requester = models.ForeignKey(
         'users.User',
@@ -129,7 +129,7 @@ class Ticket(models.Model):
     )
 
     location = models.CharField(max_length=200, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

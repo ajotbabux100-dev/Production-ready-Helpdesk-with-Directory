@@ -1,6 +1,5 @@
 'use client'
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import api from '@/app/lib/api'
 import { Notification } from '@/app/lib/types'
 import { Bell, Check, CheckCheck, Ticket, MessageSquare, AlertTriangle, UserCheck, Clock, X, Volume2, VolumeX } from 'lucide-react'
@@ -43,7 +42,6 @@ function timeAgo(dateStr: string) {
 type Filter = 'all' | 'unread'
 
 export default function NotificationsPage() {
-  const router = useRouter()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<Filter>('all')
@@ -83,7 +81,7 @@ export default function NotificationsPage() {
 
   const handleClick = async (n: Notification) => {
     if (!n.is_read) await markRead(n.id)
-    if (n.ticket) router.push(`/tickets/${n.ticket}`)
+    if (n.ticket) window.location.href = `/tickets/${n.ticket}`
   }
 
   const shown = filter === 'unread' ? notifications.filter((n) => !n.is_read) : notifications

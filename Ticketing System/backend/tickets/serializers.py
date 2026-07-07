@@ -5,6 +5,21 @@ from departments.serializers import DepartmentMinimalSerializer
 from departments.models import Department
 
 
+def _category_display(context, category_slug):
+    """Resolves a Ticket.category slug to its display name without a query
+    per row - TicketListSerializer/TicketDetailSerializer share one `context`
+    dict across every row in a `many=True` list, so the lookup table built on
+    the first row's call is reused for the rest of the page instead of
+    re-querying TicketCategory once per ticket."""
+    if not category_slug:
+        return ''
+    cache = context.get('_category_map')
+    if cache is None:
+        cache = {c.slug: c.name for c in TicketCategory.objects.all()}
+        context['_category_map'] = cache
+    return cache.get(category_slug) or category_slug.replace('_', ' ').title()
+
+
 class TicketCategorySerializer(serializers.ModelSerializer):
     department_ids = serializers.PrimaryKeyRelatedField(
         source='departments',
@@ -94,10 +109,7 @@ class TicketListSerializer(serializers.ModelSerializer):
     is_sla_resolution_breached = serializers.ReadOnlyField()
 
     def get_category_display(self, obj):
-        if not obj.category:
-            return ''
-        cat = TicketCategory.objects.filter(slug=obj.category).first()
-        return cat.name if cat else obj.category.replace('_', ' ').title()
+        return _category_display(self.context, obj.category)
 
     class Meta:
         model = Ticket
@@ -127,10 +139,7 @@ class TicketDetailSerializer(serializers.ModelSerializer):
     is_sla_resolution_breached = serializers.ReadOnlyField()
 
     def get_category_display(self, obj):
-        if not obj.category:
-            return ''
-        cat = TicketCategory.objects.filter(slug=obj.category).first()
-        return cat.name if cat else obj.category.replace('_', ' ').title()
+        return _category_display(self.context, obj.category)
 
     def get_status_history(self, obj):
         # The "journey" a ticket took - who created/assigned/reassigned it and

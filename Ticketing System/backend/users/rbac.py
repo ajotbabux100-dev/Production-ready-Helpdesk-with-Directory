@@ -66,8 +66,7 @@ ALL_PERMISSION_KEYS = {
 }
 
 
-def permission_catalog():
-    """Returns the catalog as a list of {module, module_label, actions: [{key, action, label}]}."""
+def _build_permission_catalog():
     return [
         {
             'module': module,
@@ -79,3 +78,15 @@ def permission_catalog():
         }
         for module, actions in MODULE_ACTIONS.items()
     ]
+
+
+# Built once at import time, not per-request - MODULE_ACTIONS/MODULE_LABELS/
+# ACTION_LABELS are static code-defined dicts (see module docstring), so
+# there's nothing to invalidate and nothing gained by rebuilding this on
+# every call to PermissionCatalogView / every role-permission validation.
+_PERMISSION_CATALOG = _build_permission_catalog()
+
+
+def permission_catalog():
+    """Returns the catalog as a list of {module, module_label, actions: [{key, action, label}]}."""
+    return _PERMISSION_CATALOG
