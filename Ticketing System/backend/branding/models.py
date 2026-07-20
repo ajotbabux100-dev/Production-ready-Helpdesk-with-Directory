@@ -62,8 +62,8 @@ class SystemSettings(models.Model):
     )
 
     # ---------- Appearance ----------
-    primary_color = models.CharField(max_length=7, default='#1e3a5f',
-                                     help_text='Hex colour, e.g. #1e3a5f')
+    primary_color = models.CharField(max_length=7, default='#1f2330',
+                                     help_text='Hex colour, e.g. #1f2330')
     favicon = models.ImageField(upload_to='branding/', null=True, blank=True)
 
     # ---------- Ticket Numbering ----------

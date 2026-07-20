@@ -97,7 +97,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // While the store is rehydrating, render nothing to avoid a flash.
   if (!hasHydrated) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-[#f0f2f5] flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-900" />
       </div>
     )
@@ -106,7 +106,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!user) return null
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#f0f2f5]">
       <div className="print:hidden">
         <Sidebar mobileOpen={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
         <Topbar onMenuClick={() => setMobileNavOpen((o) => !o)} />

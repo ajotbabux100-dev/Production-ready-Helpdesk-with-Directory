@@ -126,8 +126,8 @@ export default function DashboardPage() {
                 whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
                 className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 cursor-pointer h-full"
               >
-                <div className="w-12 h-12 rounded-xl bg-blue-900 flex items-center justify-center flex-shrink-0">
-                  <TicketIcon className="w-6 h-6 text-white" />
+                <div className="w-12 h-12 rounded-xl bg-[#eff6ff] flex items-center justify-center flex-shrink-0">
+                  <TicketIcon className="w-6 h-6 text-blue-600" />
                 </div>
                 <div>
                   <p className="text-3xl font-bold text-gray-900">{s?.total ?? 0}</p>
@@ -192,8 +192,8 @@ export default function DashboardPage() {
             <a href="/tickets" className="col-span-12 sm:col-span-4">
               <motion.div custom={0} variants={fadeUp} initial="hidden" animate="show" whileHover={{ y: -3, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}
                 className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center gap-4 cursor-pointer h-full">
-                <div className="w-12 h-12 rounded-xl bg-blue-900 flex items-center justify-center flex-shrink-0">
-                  <TicketIcon className="w-6 h-6 text-white" />
+                <div className="w-12 h-12 rounded-xl bg-[#eff6ff] flex items-center justify-center flex-shrink-0">
+                  <TicketIcon className="w-6 h-6 text-blue-600" />
                 </div>
                 <div>
                   <p className="text-3xl font-bold text-gray-900">{s?.total ?? 0}</p>
@@ -282,10 +282,10 @@ export default function DashboardPage() {
 
             {/* Assigned to me */}
             <a href="/tickets?assigned_to_me=true" className="col-span-1">
-              <div className="bg-gradient-to-br from-blue-900 to-blue-700 rounded-2xl p-5 text-white hover:shadow-lg transition-shadow cursor-pointer h-full">
+              <div className="rounded-2xl p-5 text-white hover:shadow-lg transition-shadow cursor-pointer h-full" style={{ background: '#1f2330' }}>
                 <ClipboardCheck className="w-5 h-5 mb-3 opacity-70" />
                 <p className="text-3xl font-bold">{s?.assigned_to_me ?? 0}</p>
-                <p className="text-sm text-blue-200 mt-1">Assigned to me</p>
+                <p className="text-sm text-white/60 mt-1">Assigned to me</p>
               </div>
             </a>
 

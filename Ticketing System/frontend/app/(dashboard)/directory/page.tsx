@@ -10,6 +10,17 @@ import { Select } from '@/app/components/ui/select'
 import { Modal } from '@/app/components/ui/modal'
 import { BookOpen, Link as LinkIcon, Plus, Edit, Trash2, ExternalLink, Settings2, Upload, Search, X } from 'lucide-react'
 
+// Not every portal's site actually has a favicon.ico at its domain root -
+// falls back to a generic link glyph instead of leaving an empty gap (or,
+// pre-fix, Google's favicon service's own misleading generic globe) when it
+// 404s or the domain doesn't serve one.
+function PortalFavicon({ url }: { url: string | null }) {
+  const [failed, setFailed] = useState(false)
+  if (!url || failed) return <LinkIcon className="w-4 h-4 text-gray-300 flex-shrink-0" />
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={url} alt="" className="w-4 h-4 rounded-sm flex-shrink-0" onError={() => setFailed(true)} />
+}
+
 export default function DirectoryPage() {
   const isAdmin = useHasPerm('settings', 'view')
   const canEditEntries = useHasPerm('directory_tabs', 'edit')
@@ -280,14 +291,14 @@ export default function DirectoryPage() {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-900" />
         </div>
       ) : activeTab === 'portals' ? (
-        <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
+        <div className="border border-gray-200 rounded-xl bg-white max-h-[70vh] overflow-auto">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Category</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">URL</th>
-                {canAddEdit && <th className="w-24" />}
+                <th className="sticky top-0 z-10 bg-gray-50 text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</th>
+                <th className="sticky top-0 z-10 bg-gray-50 text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Category</th>
+                <th className="sticky top-0 z-10 bg-gray-50 text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">URL</th>
+                {canAddEdit && <th className="sticky top-0 z-10 bg-gray-50 w-24" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -298,10 +309,7 @@ export default function DirectoryPage() {
                 <tr key={p.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-medium text-gray-800">
                     <div className="flex items-center gap-2">
-                      {p.favicon_url && (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.favicon_url} alt="" className="w-4 h-4 rounded-sm" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
-                      )}
+                      <PortalFavicon url={p.favicon_url} />
                       {p.name}
                     </div>
                   </td>
@@ -339,7 +347,7 @@ export default function DirectoryPage() {
           </table>
         </div>
       ) : typeof activeTab === 'number' ? (
-        <div className="border border-gray-200 rounded-xl overflow-hidden bg-white overflow-x-auto">
+        <div className="border border-gray-200 rounded-xl bg-white max-h-[70vh] overflow-auto">
           {activeFields.length === 0 && (
             <p className="px-4 py-3 text-xs text-gray-400 border-b border-gray-100">
               This tab has no details defined yet â€” {isAdmin ? <>manage them from Settings &rarr; Directory.</> : 'ask an admin to add some in Settings.'}
@@ -349,9 +357,9 @@ export default function DirectoryPage() {
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 {activeFields.map((f) => (
-                  <th key={f.id} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{f.name}</th>
+                  <th key={f.id} className="sticky top-0 z-10 bg-gray-50 text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">{f.name}</th>
                 ))}
-                {canAddEdit && <th className="w-24" />}
+                {canAddEdit && <th className="sticky top-0 z-10 bg-gray-50 w-24" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">

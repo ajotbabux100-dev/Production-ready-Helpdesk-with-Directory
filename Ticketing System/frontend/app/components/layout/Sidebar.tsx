@@ -7,7 +7,7 @@ import api from '@/app/lib/api'
 import { SystemSettings } from '@/app/lib/types'
 import {
   LayoutDashboard, Ticket, Users, BarChart3,
-  Settings, ClipboardList, Shield, LogOut, ChevronRight, BookOpen, KeyRound, X,
+  Settings, ClipboardList, Shield, LogOut, BookOpen, KeyRound, X,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -24,11 +24,10 @@ const NAV = [
   { href: '/settings',    label: 'Settings',   icon: Settings,          perm: 'settings.view',    staffOnly: false },
 ] as const
 
-function hexToRgb(hex: string) {
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  return `${r} ${g} ${b}`
+// Exact ISH portal formula: hardcoded dark top, primary colour at bottom
+// linear-gradient(180deg, #1a1f35 0%, var(--brand-primary) 100%)
+function sidebarGradient(hex: string): string {
+  return `linear-gradient(180deg, #1a1f35 0%, ${hex || '#1f2330'} 100%)`
 }
 
 interface SidebarProps {
@@ -58,8 +57,7 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
     if ('hideIfStaff' in item && item.hideIfStaff && isStaff) return false
     return hasPerm(item.perm)
   })
-  const bgColor  = branding?.primary_color || '#1e3a5f'
-  const rgbColor = bgColor.startsWith('#') ? hexToRgb(bgColor) : '30 58 95'
+  const bgColor = branding?.primary_color || '#1f2330'
 
   const handleLogout = async () => {
     try { await api.post('/auth/logout/', { refresh: refreshToken }) } catch {}
@@ -91,7 +89,7 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
           'fixed inset-y-0 left-0 z-40 w-64 flex flex-col transition-transform duration-200 ease-out lg:translate-x-0',
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         )}
-        style={{ backgroundColor: bgColor }}
+        style={{ background: sidebarGradient(bgColor) }}
       >
       {/* ── Logo / brand ── */}
       <div className="px-5 py-5 border-b border-white/10">
@@ -145,23 +143,22 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
                 href={item.href}
                 onClick={onClose}
                 className={cn(
-                  'group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors duration-150',
+                  'group flex items-center gap-3 py-2.5 text-sm font-medium transition-colors duration-150',
                   active
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-white/70 hover:bg-white/10 hover:text-white'
+                    ? 'text-white'
+                    : 'text-white/65 hover:bg-white/[0.07] hover:text-white'
                 )}
+                style={active
+                  ? { background: 'rgba(79,110,247,0.22)', borderLeft: '3px solid #4f6ef7', paddingLeft: '9px', paddingRight: '12px' }
+                  : { borderLeft: '3px solid transparent', paddingLeft: '12px', paddingRight: '12px' }}
               >
                 <Icon
                   className={cn(
                     'w-4 h-4 flex-shrink-0 transition-colors',
-                    active ? 'text-blue-900' : 'text-white/60 group-hover:text-white'
+                    active ? 'text-white' : 'text-white/60 group-hover:text-white'
                   )}
-                  style={active ? { color: bgColor } : {}}
                 />
                 <span className="flex-1">{item.label}</span>
-                {active && (
-                  <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: bgColor }} />
-                )}
               </a>
             </motion.div>
           )
@@ -178,14 +175,11 @@ export function Sidebar({ mobileOpen = false, onClose }: SidebarProps) {
 
       {/* ── User profile ── */}
       {user && (
-        <div
-          className="border-t border-white/10 px-3 py-3"
-          style={{ background: `rgba(${rgbColor} / 0.5)` }}
-        >
+        <div className="border-t border-white/10 px-3 py-3">
           <div className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-white/5 transition-colors">
             <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 text-white"
-              style={{ background: `rgba(255 255 255 / 0.2)` }}
+              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 text-white"
+              style={{ background: '#4f6ef7' }}
             >
               {initials}
             </div>

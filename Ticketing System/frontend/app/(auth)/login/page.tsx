@@ -39,7 +39,7 @@ function LoginPageInner() {
     if (hasHydrated && user && accessToken) window.location.href = '/dashboard'
   }, [hasHydrated, user, accessToken])
 
-  const bg = branding?.primary_color || '#1e3a5f'
+  const bg = branding?.primary_color || '#1f2330'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -65,9 +65,14 @@ function LoginPageInner() {
     <div className="min-h-screen flex">
       {/* ── Left panel ── */}
       <div
-        className="hidden lg:flex w-5/12 flex-col justify-between px-12 py-12 text-white"
-        style={{ backgroundColor: bg }}
+        className="hidden lg:flex w-5/12 flex-col justify-between px-12 py-12 text-white relative overflow-hidden"
+        style={{ background: `linear-gradient(150deg, #12172a 0%, ${bg} 55%, #0d1120 100%)` }}
       >
+        {/* Radial glow — decorative, matches ish-portal brand panel */}
+        <div className="pointer-events-none absolute -top-24 -right-28 w-[500px] h-[500px] rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(79,110,247,0.18) 0%, transparent 70%)' }} />
+        <div className="pointer-events-none absolute -bottom-20 -left-20 w-[350px] h-[350px] rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(255,255,255,0.04) 0%, transparent 70%)' }} />
         {/* Logo + name */}
         <div className="flex items-center gap-3">
           {branding?.company_logo_url ? (
@@ -187,8 +192,8 @@ function LoginPageInner() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full h-12 rounded-xl text-white font-semibold text-sm mt-2 transition-opacity disabled:opacity-70 flex items-center justify-center gap-2"
-                style={{ backgroundColor: bg }}
+                className="w-full h-12 rounded-xl text-white font-semibold text-sm mt-2 transition-all disabled:opacity-70 flex items-center justify-center gap-2 hover:brightness-110"
+                style={{ background: bg }}
               >
                 {loading ? (
                   <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />

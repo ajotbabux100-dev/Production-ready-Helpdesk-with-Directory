@@ -20,17 +20,18 @@
 }
 
 body {
-  background: var(--background);
+  background: #f0f2f5;
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 /* Styled horizontal scrollbar for the Settings tab strip - a plain browser
    default scrollbar there reads as broken/unfinished, so give it a slim
    rounded thumb in the brand colour instead. */
+
 .tabs-scroll {
   scrollbar-width: thin;
-  scrollbar-color: #1e3a5f4d transparent;
+  scrollbar-color: #1f23304d transparent;
 }
 .tabs-scroll::-webkit-scrollbar {
   height: 6px;
@@ -39,9 +40,9 @@ body {
   background: transparent;
 }
 .tabs-scroll::-webkit-scrollbar-thumb {
-  background: #1e3a5f4d;
+  background: #1f23304d;
   border-radius: 9999px;
 }
 .tabs-scroll::-webkit-scrollbar-thumb:hover {
-  background: #1e3a5f99;
+  background: #1f233099;
 }
